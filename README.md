@@ -31,7 +31,9 @@ The script calls the a4kSubtitles plugin through Kodi's standard subtitle-servic
 (`action=search`, then the download URL of each result) using JSON-RPC `Files.GetDirectory`,
 and loads the downloaded file with `xbmc.Player().setSubtitles()`. State is kept in
 `special://temp/a4knext.json`.
+## Credits
 
+Written with help from Claude (Anthropic).
 ## License
 
 MIT
