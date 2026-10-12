@@ -1,0 +1,34 @@
+# Kodi Media Center language file
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ar_SA\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "عام"
+
+msgctxt "#32001"
+msgid "Close gaps between subtitle lines"
+msgstr "سد الفواصل بين سطور الترجمة"
+
+msgctxt "#32002"
+msgid "Close gaps up to (ms)"
+msgstr "سد الفواصل حتى (ملي ثانية)"
+
+msgctxt "#32003"
+msgid "Keep line longer on long gaps (ms)"
+msgstr "إبقاء السطر أطول في الفواصل الطويلة (ملي ثانية)"
+
+msgctxt "#32004"
+msgid "Applies to every external SRT subtitle, however it was loaded."
+msgstr "يُطبّق على أي ترجمة SRT خارجية، بأي طريقة تحمّلت."
+
+msgctxt "#32005"
+msgid "Gaps up to this length are closed: the line stays until the next one starts."
+msgstr "الفواصل الأقصر من هذا تنسد: يبقى السطر لين يجي اللي بعده."
+
+msgctxt "#32006"
+msgid "For longer gaps the line stays this much longer. 0 = off."
+msgstr "في الفواصل الأطول يبقى السطر هذي المدة الإضافية. 0 = إيقاف."
+

@@ -1,0 +1,9 @@
+<keymap>
+  <fullscreenvideo>
+    <keyboard>
+      <!-- Replace 61634 with your own button id (see README) -->
+      <key id="61634">RunScript(script.subtitle.cycler)</key>
+      <key id="61634" mod="longpress">ActivateWindow(SubtitleSearch)</key>
+    </keyboard>
+  </fullscreenvideo>
+</keymap>

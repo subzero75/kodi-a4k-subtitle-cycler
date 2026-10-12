@@ -1,0 +1,34 @@
+# Kodi Media Center language file
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en_GB\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr ""
+
+msgctxt "#32001"
+msgid "Close gaps between subtitle lines"
+msgstr ""
+
+msgctxt "#32002"
+msgid "Close gaps up to (ms)"
+msgstr ""
+
+msgctxt "#32003"
+msgid "Keep line longer on long gaps (ms)"
+msgstr ""
+
+msgctxt "#32004"
+msgid "Applies to every external SRT subtitle, however it was loaded."
+msgstr ""
+
+msgctxt "#32005"
+msgid "Gaps up to this length are closed: the line stays until the next one starts."
+msgstr ""
+
+msgctxt "#32006"
+msgid "For longer gaps the line stays this much longer. 0 = off."
+msgstr ""
+
