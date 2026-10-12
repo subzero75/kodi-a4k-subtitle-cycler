@@ -1,10 +1,11 @@
-import hashlib, json, os, re, time
+import hashlib, json, os, re, time, uuid
 import xbmc, xbmcaddon, xbmcgui, xbmcvfs
 
 ADDON_ID = 'script.subtitle.cycler'
 TEMP = xbmcvfs.translatePath('special://temp/')
 OUT_PREFIX = 'subtitlecycler_'
 PROP_SEEN = 'subtitlecycler.seen'
+STATE = os.path.join(TEMP, 'subtitlecycler.json')
 TS = re.compile(r'(\d+):(\d\d):(\d\d)[,.](\d{1,3})\s*-->\s*(\d+):(\d\d):(\d\d)[,.](\d{1,3})')
 
 
@@ -102,25 +103,54 @@ def close_gaps(text, max_gap, extend):
                    for n, (a, b, body) in enumerate(cues, 1))
 
 
-def prepare(path):
-    """Register the subtitle as seen and return (path to load, gaps_closed)."""
-    raw = read_bytes(path)
-    mark_seen(digest(raw))
-    a = addon()
-    if not a.getSettingBool('gapfix'):
-        return path, False
-    out = close_gaps(decode(raw), a.getSettingInt('max_gap'), a.getSettingInt('extend'))
-    if out is None:
-        return path, False
+def gapfix_on():
+    return addon().getSettingBool('gapfix')
+
+
+# The script sets this while it is downloading, so the service leaves those files alone.
+PROP_BUSY = 'subtitlecycler.busy'
+
+
+def set_busy(start, end=0.0):
+    xbmcgui.Window(10000).setProperty(PROP_BUSY, '%f %f' % (start, end))
+
+
+def busy_window():
+    try:
+        a, b = xbmcgui.Window(10000).getProperty(PROP_BUSY).split()
+        return float(a), float(b)
+    except ValueError:
+        return None
+
+
+def _write_unique(data, ext):
     for name in os.listdir(TEMP):
-        if name.startswith(OUT_PREFIX) and name.endswith('.srt'):
+        if name.startswith(OUT_PREFIX):
             try:
                 os.remove(os.path.join(TEMP, name))
             except OSError:
                 pass
     # Kodi reuses an already loaded subtitle with the same path, so every file gets a new name
-    dst = os.path.join(TEMP, '%s%d.srt' % (OUT_PREFIX, int(time.time() * 1000)))
-    with open(dst, 'w', encoding='utf-8-sig') as fh:
-        fh.write(out)
-    log('gaps closed: %s -> %s' % (path, dst))
-    return dst, True
+    dst = os.path.join(TEMP, '%s%s%s' % (OUT_PREFIX, uuid.uuid4().hex[:12], ext))
+    with open(dst, 'wb') as fh:
+        fh.write(data)
+    return dst
+
+
+def prepare(path):
+    """Register the subtitle as seen and return (fresh copy to load, gaps_closed)."""
+    raw = read_bytes(path)
+    mark_seen(digest(raw))
+    text = decode(raw[:4096]) or ''
+    is_srt = bool(TS.search(text))
+    if is_srt and gapfix_on():
+        a = addon()
+        out = close_gaps(decode(raw), a.getSettingInt('max_gap'), a.getSettingInt('extend'))
+        if out is not None:
+            dst = _write_unique(out.encode('utf-8-sig'), '.srt')
+            log('gaps closed: %s -> %s' % (path, dst))
+            return dst, True
+    ext = '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt')
+    dst = _write_unique(raw, ext)
+    log('copied: %s -> %s' % (path, dst))
+    return dst, False

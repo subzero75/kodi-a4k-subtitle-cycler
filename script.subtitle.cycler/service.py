@@ -16,6 +16,11 @@ class Player(xbmc.Player):
         self.start = time.time() - 3
         self.known = {}
         c.reset_seen()
+        # New playback: forget the previous result list so the next press searches again
+        try:
+            os.remove(c.STATE)
+        except OSError:
+            pass
 
 
 def candidates():
@@ -38,8 +43,17 @@ def candidates():
         pass
 
 
+def in_busy(m, busy):
+    if not busy:
+        return False
+    a, b = busy
+    return m >= a - 0.5 and (b == 0 or m <= b + 2)
+
+
 def check(player):
+    gapfix = c.gapfix_on()
     now = time.time()
+    busy = c.busy_window()
     for path in candidates():
         try:
             st = os.stat(path)
@@ -48,14 +62,22 @@ def check(player):
         m = st.st_mtime
         if m < player.start or player.known.get(path) == m or now - m < 0.8 or st.st_size > MAX_SIZE:
             continue
+        if busy and busy[1] == 0 and m >= busy[0] - 0.5:
+            continue  # script still downloading; look again once it is done
         player.known[path] = m
+        if in_busy(m, busy):
+            continue  # written by the script's own downloads
         try:
             raw = c.read_bytes(path)
             text = c.decode(raw[:4096])
             if not text or not c.TS.search(text) or c.digest(raw) in c.seen():
                 continue
+            if not gapfix:
+                c.mark_seen(c.digest(raw))  # so the button skips it
+                continue
             sub, fixed = c.prepare(path)
             if fixed and player.isPlayingVideo():
+                c.log('service loading %s -> %s' % (path, sub))
                 player.setSubtitles(sub)
                 player.showSubtitles(True)
         except Exception as e:

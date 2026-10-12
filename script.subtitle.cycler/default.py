@@ -1,9 +1,8 @@
-import json
+import json, time
 from urllib.parse import quote
 import xbmc, xbmcvfs
 from resources.lib import common as c
 
-STATE = xbmcvfs.translatePath('special://temp/subtitlecycler.json')
 
 
 def services():
@@ -33,9 +32,18 @@ def main():
     if not p.isPlayingVideo():
         c.addon().openSettings()
         return
+    start = time.time()
+    c.set_busy(start)
+    try:
+        cycle(p)
+    finally:
+        c.set_busy(start, time.time())
+
+
+def cycle(p):
     cur = p.getPlayingFile()
     try:
-        with open(STATE) as fh:
+        with open(c.STATE) as fh:
             st = json.load(fh)
     except Exception:
         st = {}
@@ -68,11 +76,12 @@ def main():
     else:
         st['index'] = chosen
         sub, fixed = c.prepare(cache[chosen][0])
+        c.log('loading %d/%d %s -> %s' % (chosen + 1, n, st['results'][chosen]['label'], sub))
         p.setSubtitles(sub)
         p.showSubtitles(True)
         c.notify('%d/%d%s  %s' % (chosen + 1, n, ' +gapfix' if fixed else '',
                                   st['results'][chosen]['label'][:70]), 4000)
-    with open(STATE, 'w') as fh:
+    with open(c.STATE, 'w') as fh:
         json.dump(st, fh)
 
 
