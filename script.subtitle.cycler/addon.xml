@@ -12,6 +12,6 @@
     <description lang="en_GB">Press a button during playback to download and load the next subtitle result from all enabled subtitle add-ons (a4kSubtitles, OpenSubtitles, Subdl and others). Optional: close short gaps between subtitle lines for every external subtitle, whichever way it was loaded.</description>
     <platform>all</platform>
     <license>MIT</license>
-    <source>https://github.com/subzero75/kodi-a4k-subtitle-cycler</source>
+    <source>https://github.com/subzero75/kodi-subtitle-cycler</source>
   </extension>
 </addon>
