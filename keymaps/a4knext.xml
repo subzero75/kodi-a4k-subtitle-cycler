@@ -1,0 +1,9 @@
+<keymap>
+  <fullscreenvideo>
+    <keyboard>
+      <!-- Replace 61634 with your button id, and the path if your Kodi profile is elsewhere -->
+      <key id="61634">RunScript(/storage/.kodi/userdata/a4knext.py)</key>
+      <key id="61634" mod="longpress">ActivateWindow(SubtitleSearch)</key>
+    </keyboard>
+  </fullscreenvideo>
+</keymap>
