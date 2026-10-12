@@ -124,12 +124,15 @@ def busy_window():
 
 
 def _write_unique(data, ext):
-    for name in os.listdir(TEMP):
-        if name.startswith(OUT_PREFIX):
-            try:
-                os.remove(os.path.join(TEMP, name))
-            except OSError:
-                pass
+    # Keep the few newest copies: Kodi may still be opening one of them. Kodi itself deletes
+    # them all when playback stops.
+    old = sorted((os.path.join(TEMP, n) for n in os.listdir(TEMP) if n.startswith(OUT_PREFIX)),
+                 key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0)
+    for name in old[:-3]:
+        try:
+            os.remove(name)
+        except OSError:
+            pass
     # Kodi reuses an already loaded subtitle with the same path, so every file gets a new name
     dst = os.path.join(TEMP, '%s%s%s' % (OUT_PREFIX, uuid.uuid4().hex[:12], ext))
     with open(dst, 'wb') as fh:
