@@ -41,7 +41,7 @@ Running the add-on from the Programs menu (with no video playing) opens its sett
 - Sync needs an MKV with a **text** subtitle track (SRT/ASS); image tracks (PGS, VobSub) and MP4 files are skipped. Only the start times are compared, so the languages do not have to match. Only a small part of the video is read (the cue index plus a sample of subtitle blocks, usually a few MB), so it also works for streamed debrid/Usenet files; the result is cached per video. When the timings do not line up clearly, the subtitle is left unchanged.
 - For TV episodes, results named for another episode (`S01E05`) or another season's pack (`S01`, `Season.01`) are left out of the list.
 - With sync on, a subtitle whose timing does not fit the video is skipped and the next one is tried (up to 3 per press). Subtitles picked by hand from Kodi's subtitle dialog get the same gap fix and sync, with the same notification.
-- Sync is new and has only been tested on a few series (one device, mostly Netflix WEB releases). Please open an issue with your `kodi.log` if it shifts a subtitle the wrong way.
+- Sync is new and has only been tested on a few TV series (one device, MKV files with an English text subtitle track). Please open an issue with your `kodi.log` if it shifts a subtitle the wrong way.
 - An auto-downloaded subtitle shows as-is for about a second before it is replaced by the gap-free copy.
 
 ## How it works
