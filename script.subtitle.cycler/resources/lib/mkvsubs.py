@@ -30,7 +30,7 @@ class Source:
         self.read_total = 0
         self.max_bytes = max_bytes
         self.deadline = time.time() + max_seconds
-        self.chunk = 64 * 1024
+        self.chunk = 256 * 1024
 
     def read(self, pos, n):
         out = bytearray()
@@ -275,23 +275,12 @@ class MKV:
         out = []
         try:
             sub_cues = [c for c in self.cues if c[1] == num]
-            if sub_cues:
-                step = max(1, len(sub_cues) // max_events)
-                for t, tr, cpos, rel in sub_cues[::step]:
-                    try:
-                        data, end, ts = self._cluster(cpos)
-                    except (EOFError, ValueError):
-                        continue
-                    if rel is not None:
-                        eid, size, epos = header(self.src, data + rel)
-                        ev = self._block(eid, size, epos, ts, num)
-                        if ev:
-                            out.append(ev)
-                    else:
-                        self._scan_cluster(cpos, num, out)
+            if len(sub_cues) >= 10:
+                # The cue time of a subtitle block is its start time: no need to read the blocks
                 if log:
-                    log('read %d subtitle blocks via cues (%d KB)' % (len(out), self.src.read_total // 1024))
-                return _dedupe(out)
+                    log('%d subtitle start times from the cue index (%d KB read)' % (
+                        len(sub_cues), self.src.read_total // 1024))
+                return _dedupe([(c[0], None) for c in sub_cues])
             # No cue entries for the subtitle track: scan a few windows spread over the video
             vids = sorted({(round(c[0]), c[2]) for c in self.cues})
             if not vids:

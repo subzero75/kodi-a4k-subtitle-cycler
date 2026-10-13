@@ -151,6 +151,7 @@ def reference_starts(video):
     except (OSError, ValueError):
         pass
     from resources.lib import mkvsubs
+    notify('Reading embedded subtitles for sync...', 2000)
     t0 = time.time()
     starts = None
     note = ''
