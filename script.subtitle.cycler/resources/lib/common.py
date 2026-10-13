@@ -139,7 +139,7 @@ class _KodiFile:
         self.f.close()
 
 
-def reference_starts(video):
+def reference_starts(video, quiet=False):
     """Start times (ms) of an embedded text subtitle track of the playing MKV, cached per video."""
     if not video or video.startswith(('plugin://', 'pvr://')):
         return None
@@ -151,7 +151,8 @@ def reference_starts(video):
     except (OSError, ValueError):
         pass
     from resources.lib import mkvsubs
-    notify('Reading embedded subtitles for sync...', 2000)
+    if not quiet:
+        notify('Reading embedded subtitles for sync...', 2000)
     t0 = time.time()
     starts = None
     note = ''
@@ -191,7 +192,7 @@ def sync_cues(cues):
     res = subsync.find_shift(ref, [c[0] for c in cues])
     if not res:
         log('sync: no confident match (%d reference lines)' % len(ref))
-        return cues, None
+        return cues, 'no sync'
     a, b = res['a'], res['b']
     log('sync: x%.5f %+.0f ms (%d/%d lines matched)' % (a, b, res['matched'], res['total']))
     if abs(a - 1) < 1e-4 and abs(b) < 150:
@@ -277,7 +278,7 @@ def load(player, sub, original=None):
     player.showSubtitles(True)
     if not original:
         return True
-    for _ in range(10):
+    for _ in range(5):
         xbmc.sleep(100)
         if _parser_failed(mark):
             fallback = original
@@ -290,12 +291,14 @@ def load(player, sub, original=None):
 
 
 LAST_TAGS = []
+NOTES = []
 
 
 def prepare(path):
     """Register the subtitle as seen and return (fresh copy to load, changed).
     What was changed ('gapfix', 'sync +1.2s') is left in LAST_TAGS."""
     del LAST_TAGS[:]
+    del NOTES[:]
     raw = read_bytes(path)
     mark_seen(digest(raw))
     text = decode(raw[:4096]) or ''
@@ -306,7 +309,9 @@ def prepare(path):
         if cues:
             if sync:
                 cues, tag = sync_cues(cues)
-                if tag:
+                if tag == 'no sync':
+                    NOTES.append('timing differs from the video: other episode or cut?')
+                elif tag:
                     LAST_TAGS.append(tag)
             if gap:
                 a = addon()

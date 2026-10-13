@@ -112,11 +112,9 @@ def cycle(p):
         tags = list(c.LAST_TAGS)
         if not c.load(p, sub, path if fixed else None):
             tags = []
-        c.notify('%d/%d%s  %s' % (chosen + 1, n, ''.join(' +' + t for t in tags),
-                                  st['results'][chosen]['label'][:70]), 4000)
-        xbmc.sleep(500)
-        if not os.path.exists(sub):
-            c.log('loaded file vanished: %s' % sub, xbmc.LOGWARNING)
+        c.notify('%d/%d%s  %s%s' % (chosen + 1, n, ''.join(' +' + t for t in tags),
+                                    st['results'][chosen]['label'][:70],
+                                    ''.join('  (%s)' % t for t in c.NOTES)), 4000)
     save_state(st)
 
 

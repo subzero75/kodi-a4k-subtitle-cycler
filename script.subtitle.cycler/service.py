@@ -11,8 +11,10 @@ class Player(xbmc.Player):
         super().__init__()
         self.start = 0
         self.known = {}
+        self.prefetch = 0
 
     def onAVStarted(self):
+        self.prefetch = time.time() + 5
         self.start = time.time() - 3
         self.known = {}
         c.reset_seen()
@@ -89,6 +91,14 @@ def run():
     c.log('service started')
     while not monitor.waitForAbort(1):
         if player.isPlayingVideo() and player.start:
+            if player.prefetch and time.time() > player.prefetch:
+                player.prefetch = 0
+                if c.sync_on():
+                    try:
+                        # read the embedded subtitle timings now, so the first button press is quick
+                        c.reference_starts(player.getPlayingFile(), quiet=True)
+                    except Exception as e:
+                        c.log('prefetch failed: %s' % e, xbmc.LOGWARNING)
             check(player)
 
 

@@ -7,7 +7,7 @@ from bisect import bisect_left
 
 # Frame-rate conversions that commonly cause subtitles to drift over the movie
 SCALES = (1.0, 25 / 23.976, 23.976 / 25, 24 / 23.976, 23.976 / 24, 25 / 24, 24 / 25)
-MAX_OFFSET = 10 * 60 * 1000  # ms
+MAX_OFFSET = 5 * 60 * 1000  # ms
 BIN = 100  # ms
 TOLERANCE = 350  # ms
 
@@ -46,6 +46,9 @@ def _fit(pairs):
 def find_shift(ref_starts, ext_starts):
     """Return dict(a, b, matched, total) or None when no confident match was found."""
     ref = sorted(ref_starts)
+    if len(ref) > 250:  # an even sample is as good and keeps this fast on a TV box
+        step = len(ref) / 250.0
+        ref = [ref[int(i * step)] for i in range(250)]
     ext = sorted(ext_starts)
     if len(ref) < 5 or len(ext) < 5:
         return None
