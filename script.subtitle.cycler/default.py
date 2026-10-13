@@ -109,8 +109,8 @@ def cycle(p):
         sub, fixed = c.prepare(path)
         c.log('loading %d/%d %s -> %s (%d bytes)' % (
             chosen + 1, n, st['results'][chosen]['label'], sub, os.path.getsize(sub)))
-        p.setSubtitles(sub)
-        p.showSubtitles(True)
+        if not c.load(p, sub, path if fixed else None):
+            fixed = False
         c.notify('%d/%d%s  %s' % (chosen + 1, n, ' +gapfix' if fixed else '',
                                   st['results'][chosen]['label'][:70]), 4000)
         xbmc.sleep(500)

@@ -78,8 +78,7 @@ def check(player):
             sub, fixed = c.prepare(path)
             if fixed and player.isPlayingVideo():
                 c.log('service loading %s -> %s' % (path, sub))
-                player.setSubtitles(sub)
-                player.showSubtitles(True)
+                c.load(player, sub, path)
         except Exception as e:
             c.log('failed on %s: %s' % (path, e), xbmc.LOGWARNING)
 

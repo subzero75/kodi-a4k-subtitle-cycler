@@ -6,6 +6,7 @@ TEMP = xbmcvfs.translatePath('special://temp/')
 OUT_PREFIX = 'subtitlecycler_'
 PROP_SEEN = 'subtitlecycler.seen'
 STATE = os.path.join(TEMP, 'subtitlecycler.json')
+KODI_LOG = os.path.join(xbmcvfs.translatePath('special://logpath/'), 'kodi.log')
 TS = re.compile(r'(\d+):(\d\d):(\d\d)[,.](\d{1,3})\s*-->\s*(\d+):(\d\d):(\d\d)[,.](\d{1,3})')
 
 
@@ -140,6 +141,48 @@ def _write_unique(data, ext):
     return dst
 
 
+def copy_original(path):
+    raw = read_bytes(path)
+    is_srt = bool(TS.search(decode(raw[:4096]) or ''))
+    return _write_unique(raw, '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt'))
+
+
+def _log_size():
+    try:
+        return os.path.getsize(KODI_LOG)
+    except OSError:
+        return 0
+
+
+def _parser_failed(since):
+    try:
+        with open(KODI_LOG, 'rb') as fh:
+            fh.seek(since)
+            return b'Unable to create subtitle parser' in fh.read()
+    except OSError:
+        return False
+
+
+def load(player, sub, original=None):
+    """Load a subtitle; if Kodi cannot parse it, fall back to a copy of the original file.
+    Returns True when the given subtitle was used, False when the fallback was."""
+    mark = _log_size()
+    player.setSubtitles(sub)
+    player.showSubtitles(True)
+    if not original:
+        return True
+    for _ in range(10):
+        xbmc.sleep(100)
+        if _parser_failed(mark):
+            fallback = copy_original(original)
+            log('Kodi could not parse %s, loading original %s as %s' % (sub, original, fallback),
+                xbmc.LOGWARNING)
+            player.setSubtitles(fallback)
+            player.showSubtitles(True)
+            return False
+    return True
+
+
 def prepare(path):
     """Register the subtitle as seen and return (fresh copy to load, gaps_closed)."""
     raw = read_bytes(path)
@@ -150,7 +193,8 @@ def prepare(path):
         a = addon()
         out = close_gaps(decode(raw), a.getSettingInt('max_gap'), a.getSettingInt('extend'))
         if out is not None:
-            dst = _write_unique(out.encode('utf-8-sig'), '.srt')
+            # Plain UTF-8 without BOM and with CRLF line ends, like the files Kodi loads fine
+            dst = _write_unique(out.replace('\n', '\r\n').encode('utf-8'), '.srt')
             log('gaps closed: %s -> %s' % (path, dst))
             return dst, True
     ext = '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt')
