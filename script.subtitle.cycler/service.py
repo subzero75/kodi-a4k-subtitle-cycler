@@ -51,7 +51,7 @@ def in_busy(m, busy):
 
 
 def check(player):
-    gapfix = c.gapfix_on()
+    gapfix = c.gapfix_on() or c.sync_on()
     now = time.time()
     busy = c.busy_window()
     for path in candidates():

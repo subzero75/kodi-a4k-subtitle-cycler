@@ -83,8 +83,8 @@ def _fmt(ms):
     return '%02d:%02d:%02d,%03d' % (h, m, s, ms)
 
 
-def close_gaps(text, max_gap, extend):
-    """Return SRT text with short gaps closed and long gaps shortened, or None if not SRT."""
+def parse_srt(text):
+    """List of [start_ms, end_ms, body] sorted by start, or [] if the text is not SRT."""
     cues = []
     for block in re.split(r'\n\s*\n', text.replace('\r\n', '\n').strip()):
         lines = block.split('\n')
@@ -94,21 +94,122 @@ def close_gaps(text, max_gap, extend):
                 g = m.groups()
                 cues.append([_ms(*g[:4]), _ms(*g[4:]), '\n'.join(lines[i + 1:])])
                 break
-    if not cues:
-        return None
     cues.sort(key=lambda c: c[0])
+    return cues
+
+
+def format_srt(cues):
+    return ''.join('%d\n%s --> %s\n%s\n\n' % (n, _fmt(a), _fmt(b), body)
+                   for n, (a, b, body) in enumerate(cues, 1))
+
+
+def gap_close(cues, max_gap, extend):
+    """Close short gaps between lines and keep lines a little longer over long gaps."""
     for cur, nxt in zip(cues, cues[1:]):
         gap = nxt[0] - cur[1]
         if 0 < gap <= max_gap:
             cur[1] = nxt[0]
         elif gap > max_gap:
             cur[1] += min(extend, gap)
-    return ''.join('%d\n%s --> %s\n%s\n\n' % (n, _fmt(a), _fmt(b), body)
-                   for n, (a, b, body) in enumerate(cues, 1))
+    return cues
+
+
+def close_gaps(text, max_gap, extend):
+    """Return SRT text with short gaps closed and long gaps shortened, or None if not SRT."""
+    cues = parse_srt(text)
+    return format_srt(gap_close(cues, max_gap, extend)) if cues else None
+
+
+# ---------------------------------------------------------------- sync to embedded subtitles
+
+REF_DIR = xbmcvfs.translatePath('special://profile/addon_data/%s/ref/' % ADDON_ID)
+
+
+class _KodiFile:
+    def __init__(self, url):
+        self.f = xbmcvfs.File(url)
+
+    def seek(self, pos):
+        self.f.seek(pos, 0)
+
+    def read(self, n):
+        return bytes(self.f.readBytes(n))
+
+    def close(self):
+        self.f.close()
+
+
+def reference_starts(video):
+    """Start times (ms) of an embedded text subtitle track of the playing MKV, cached per video."""
+    if not video or video.startswith(('plugin://', 'pvr://')):
+        return None
+    key = digest(video.encode('utf-8'))
+    cache = os.path.join(REF_DIR, key + '.json')
+    try:
+        with open(cache) as fh:
+            return json.load(fh).get('starts')
+    except (OSError, ValueError):
+        pass
+    from resources.lib import mkvsubs
+    t0 = time.time()
+    starts = None
+    note = ''
+    f = _KodiFile(video)
+    try:
+        m = mkvsubs.MKV(mkvsubs.Source(f))
+        track = mkvsubs.pick_track(m.text_tracks())
+        if not track:
+            note = 'no embedded text subtitle track'
+        else:
+            starts = [s for s, e in m.events(track, log=log)]
+            note = 'track %d (%s %s)' % (track['number'], track.get('language'), track.get('codec'))
+    except Exception as e:  # not MKV, network error, ...
+        note = 'cannot read embedded subtitles: %s' % e
+    finally:
+        f.close()
+    log('reference for sync: %s, %d lines in %.1fs' % (note, len(starts or []), time.time() - t0))
+    try:
+        os.makedirs(REF_DIR, exist_ok=True)
+        with open(cache, 'w') as fh:
+            json.dump({'video': video, 'starts': starts, 'note': note}, fh)
+    except OSError:
+        pass
+    return starts
+
+
+def sync_cues(cues):
+    """Shift cues to match the video's embedded subtitles. Returns (cues, tag or None)."""
+    try:
+        video = xbmc.Player().getPlayingFile()
+    except RuntimeError:
+        return cues, None
+    ref = reference_starts(video)
+    if not ref:
+        return cues, None
+    from resources.lib import subsync
+    res = subsync.find_shift(ref, [c[0] for c in cues])
+    if not res:
+        log('sync: no confident match (%d reference lines)' % len(ref))
+        return cues, None
+    a, b = res['a'], res['b']
+    log('sync: x%.5f %+.0f ms (%d/%d lines matched)' % (a, b, res['matched'], res['total']))
+    if abs(a - 1) < 1e-4 and abs(b) < 150:
+        return cues, None  # already in sync
+    tag = 'sync %+.1fs' % (b / 1000.0)
+    if abs(a - 1) >= 1e-4:
+        tag += ' x%.3f' % a
+    return subsync.apply(cues, a, b), tag
 
 
 def gapfix_on():
     return addon().getSettingBool('gapfix')
+
+
+def sync_on():
+    try:
+        return addon().getSettingBool('sync')
+    except Exception:
+        return False
 
 
 # The script sets this while it is downloading, so the service leaves those files alone.
@@ -187,19 +288,33 @@ def load(player, sub, original=None):
     return True
 
 
+LAST_TAGS = []
+
+
 def prepare(path):
-    """Register the subtitle as seen and return (fresh copy to load, gaps_closed)."""
+    """Register the subtitle as seen and return (fresh copy to load, changed).
+    What was changed ('gapfix', 'sync +1.2s') is left in LAST_TAGS."""
+    del LAST_TAGS[:]
     raw = read_bytes(path)
     mark_seen(digest(raw))
     text = decode(raw[:4096]) or ''
     is_srt = bool(TS.search(text))
-    if is_srt and gapfix_on():
-        a = addon()
-        out = close_gaps(decode(raw), a.getSettingInt('max_gap'), a.getSettingInt('extend'))
-        if out is not None:
+    gap, sync = gapfix_on(), sync_on()
+    if is_srt and (gap or sync):
+        cues = parse_srt(decode(raw))
+        if cues:
+            if sync:
+                cues, tag = sync_cues(cues)
+                if tag:
+                    LAST_TAGS.append(tag)
+            if gap:
+                a = addon()
+                gap_close(cues, a.getSettingInt('max_gap'), a.getSettingInt('extend'))
+                LAST_TAGS.append('gapfix')
+        if LAST_TAGS:
             # Plain UTF-8 without BOM and with CRLF line ends, like the files Kodi loads fine
-            dst = _write_unique(out.replace('\n', '\r\n').encode('utf-8'), '.srt')
-            log('gaps closed: %s -> %s' % (path, dst))
+            dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt')
+            log('%s: %s -> %s' % (', '.join(LAST_TAGS), path, dst))
             return dst, True
     ext = '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt')
     dst = _write_unique(raw, ext)

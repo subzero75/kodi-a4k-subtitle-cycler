@@ -32,3 +32,11 @@ msgctxt "#32006"
 msgid "For longer gaps the line stays this much longer. 0 = off."
 msgstr "في الفواصل الأطول يبقى السطر هذي المدة الإضافية. 0 = إيقاف."
 
+
+msgctxt "#32007"
+msgid "Sync timing to the video's embedded subtitles"
+msgstr "مزامنة التوقيت مع الترجمة المدمجة في الفيديو"
+
+msgctxt "#32008"
+msgid "For MKV videos with a text subtitle track (any language): shift external SRT subtitles so their timing matches it. Reads only a small part of the video."
+msgstr "لملفات MKV التي فيها ترجمة نصية مدمجة (بأي لغة): يضبط توقيت ترجمات SRT الخارجية ليتطابق معها. يقرأ جزءاً صغيراً فقط من الفيديو."

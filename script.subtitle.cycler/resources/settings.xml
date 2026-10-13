@@ -38,6 +38,11 @@
             <popup>false</popup>
           </control>
         </setting>
+        <setting id="sync" type="boolean" label="32007" help="32008">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
       </group>
     </category>
   </section>
