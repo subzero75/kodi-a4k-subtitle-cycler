@@ -42,7 +42,26 @@ def read_bytes(path):
         f.close()
 
 
+def _utf16(raw):
+    """'utf-16-le'/'utf-16-be' when the bytes look like UTF-16, else None."""
+    if raw[:2] == b'\xff\xfe':
+        return 'utf-16-le'
+    if raw[:2] == b'\xfe\xff':
+        return 'utf-16-be'
+    sample = raw[:4000]
+    if len(sample) >= 40:
+        if sample[1::2].count(0) > len(sample) // 4:
+            return 'utf-16-le'
+        if sample[0::2].count(0) > len(sample) // 4:
+            return 'utf-16-be'
+    return None
+
+
 def decode(raw):
+    enc16 = _utf16(raw)
+    if enc16:
+        text = raw[:len(raw) - len(raw) % 2].decode(enc16, 'replace')
+        return text[1:] if text.startswith('\ufeff') else text
     for enc in ('utf-8-sig', 'cp1256', 'latin-1'):
         try:
             return raw.decode(enc)
@@ -425,4 +444,6 @@ def prepare(path):
     ext = '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt')
     dst = _write_unique(raw, ext)
     log('copied: %s -> %s' % (path, dst))
+    if (gap or sync) and not is_srt:
+        log('not changed, format not recognised; first bytes: %r' % raw[:48])
     return dst, False
