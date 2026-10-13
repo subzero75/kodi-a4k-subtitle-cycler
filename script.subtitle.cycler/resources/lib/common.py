@@ -165,7 +165,9 @@ def reference_starts(video, quiet=False):
         else:
             starts = [s for s, e in m.events(track, log=log)]
             note = 'track %d (%s %s)' % (track['number'], track.get('language'), track.get('codec'))
-    except Exception as e:  # not MKV, network error, ...
+    except ValueError:
+        note = 'not an MKV file, sync works with MKV only'
+    except Exception as e:  # network error, ...
         note = 'cannot read embedded subtitles: %s' % e
     finally:
         f.close()

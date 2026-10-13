@@ -1,5 +1,5 @@
-import json, os, time
-from urllib.parse import quote
+import json, os, re, time
+from urllib.parse import quote, unquote_plus
 import xbmc, xbmcgui
 from resources.lib import common as c
 
@@ -12,15 +12,39 @@ def services():
     return [(a['addonid'], a.get('name') or a['addonid']) for a in res.get('addons') or []]
 
 
+EPISODE = re.compile(r'(?<![a-z0-9])s(\d{1,2})[ ._-]?e(\d{1,3})(?!\d)', re.I)
+FILENAME = re.compile(r'"(?:filename|release|name)":\s*"([^"]+)"')
+
+
+def playing_episode():
+    try:
+        return int(xbmc.getInfoLabel('VideoPlayer.Season')), int(xbmc.getInfoLabel('VideoPlayer.Episode'))
+    except ValueError:
+        return None
+
+
 def search():
     langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or ['English']
+    episode = playing_episode()
     results = []
     for addon_id, name in services():
         url = 'plugin://%s/?action=search&languages=%s&preferredlanguage=%s' % (
             addon_id, quote(','.join(langs)), quote(langs[0]))
         found = [f for f in c.listdir(url) if f.get('file')]
-        c.log('%s: %d results' % (addon_id, len(found)))
-        results += [{'label': '%s - %s' % (name, f.get('label', '')), 'file': f['file']} for f in found]
+        kept = 0
+        for f in found:
+            text = unquote_plus(f['file'])
+            m = FILENAME.search(text)
+            label = f.get('label', '')
+            if m and m.group(1) not in label:
+                label = '%s %s' % (label, m.group(1))
+            # Subtitle sites often return the other episodes of the season too: leave those out
+            ep = EPISODE.search(m.group(1) if m else label)
+            if episode and ep and (int(ep.group(1)), int(ep.group(2))) != episode:
+                continue
+            kept += 1
+            results.append({'label': '%s - %s' % (name, label), 'file': f['file']})
+        c.log('%s: %d results, %d for other episodes left out' % (addon_id, len(found), len(found) - kept))
     return results
 
 

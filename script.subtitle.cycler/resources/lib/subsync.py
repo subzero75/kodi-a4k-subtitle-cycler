@@ -46,6 +46,9 @@ def _fit(pairs):
 def find_shift(ref_starts, ext_starts):
     """Return dict(a, b, matched, total) or None when no confident match was found."""
     ref = sorted(ref_starts)
+    # Lines a perfect match could pair up: the shorter of the two subtitles limits it
+    # (an Arabic subtitle often merges lines that the English track splits)
+    coverage = min(1.0, len(ext_starts) / float(max(len(ref), 1)))
     if len(ref) > 250:  # an even sample is as good and keeps this fast on a TV box
         step = len(ref) / 250.0
         ref = [ref[int(i * step)] for i in range(250)]
@@ -83,7 +86,7 @@ def find_shift(ref_starts, ext_starts):
     if not best:
         return None
     # Confidence: enough reference lines line up, well above what a random offset gives
-    if best['matched'] < max(8, 0.5 * len(ref)) or best['peak'] < 1.6 * best['runner'] + 2:
+    if best['matched'] < max(8, 0.45 * coverage * len(ref)) or best['peak'] < 1.6 * best['runner'] + 2:
         return None
     return best
 
