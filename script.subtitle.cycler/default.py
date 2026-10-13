@@ -13,6 +13,7 @@ def services():
 
 
 EPISODE = re.compile(r'(?<![a-z0-9])s(\d{1,2})[ ._-]?e(\d{1,3})(?!\d)', re.I)
+SEASON = re.compile(r'(?<![a-z0-9])(?:s|season[ ._-]?)(\d{1,2})(?![0-9])', re.I)
 FILENAME = re.compile(r'"(?:filename|release|name)":\s*"([^"]+)"')
 
 
@@ -39,12 +40,16 @@ def search():
             if m and m.group(1) not in label:
                 label = '%s %s' % (label, m.group(1))
             # Subtitle sites often return the other episodes of the season too: leave those out
-            ep = EPISODE.search(m.group(1) if m else label)
+            name_text = m.group(1) if m else label
+            ep = EPISODE.search(name_text)
             if episode and ep and (int(ep.group(1)), int(ep.group(2))) != episode:
                 continue
+            se = None if ep else SEASON.search(name_text)
+            if episode and se and int(se.group(1)) != episode[0]:
+                continue  # season pack of another season
             kept += 1
             results.append({'label': '%s - %s' % (name, label), 'file': f['file']})
-        c.log('%s: %d results, %d for other episodes left out' % (addon_id, len(found), len(found) - kept))
+        c.log('%s: %d results, %d for other episodes or seasons left out' % (addon_id, len(found), len(found) - kept))
     return results
 
 
@@ -106,12 +111,16 @@ def cycle(p):
     failed = set(st.setdefault('failed', []))
     n = len(st['results'])
     order = [(st['index'] + k) % n for k in range(1, n + 1)]
-    chosen = path = None
+    mismatch = set(st.setdefault('mismatch', []))
+    chosen = path = prepared = None
+    fallback = None  # a subtitle whose timing did not fit, used if nothing better turns up
+    extra = 0
     # First pass skips subtitles already shown in this video (e.g. the auto-downloaded one)
+    # and those whose timing did not fit the video
     for skip_seen in (True, False):
         already = c.seen() if skip_seen else set()
         for i in order:
-            if i in failed or hashes.get(str(i)) in already:
+            if i in failed or hashes.get(str(i)) in already or (skip_seen and i in mismatch):
                 continue
             got = download(st['results'][i])
             raw = c.read_bytes(got) if got else b''
@@ -120,17 +129,30 @@ def cycle(p):
                 failed.add(i)
                 continue
             hashes[str(i)] = c.digest(raw)
-            if hashes[str(i)] not in already:
-                chosen, path = i, got
-                break
+            if hashes[str(i)] in already:
+                continue
+            prep = c.prepare(got)
+            if c.NOTES and extra < 3:
+                # Timing does not fit this video (other episode or cut): try the next one
+                c.log('skipping %d/%d, timing does not fit the video' % (i + 1, n))
+                mismatch.add(i)
+                if fallback is None:
+                    fallback = (i, got, prep, list(c.LAST_TAGS), list(c.NOTES))
+                extra += 1
+                continue
+            chosen, path, prepared = i, got, prep
+            break
         if chosen is not None:
             break
+    if chosen is None and fallback:
+        chosen, path, prepared, c.LAST_TAGS[:], c.NOTES[:] = fallback
     st['failed'] = sorted(failed)
+    st['mismatch'] = sorted(mismatch)
     if chosen is None:
         c.notify('Download failed (daily limit reached?)' if failed else 'No other subtitles')
     else:
         st['index'] = chosen
-        sub, fixed = c.prepare(path)
+        sub, fixed = prepared
         c.log('loading %d/%d %s -> %s (%d bytes)' % (
             chosen + 1, n, st['results'][chosen]['label'], sub, os.path.getsize(sub)))
         tags = list(c.LAST_TAGS)
