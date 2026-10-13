@@ -3,7 +3,10 @@ import xbmc, xbmcaddon, xbmcgui, xbmcvfs
 
 ADDON_ID = 'script.subtitle.cycler'
 TEMP = xbmcvfs.translatePath('special://temp/')
-OUT_PREFIX = 'subtitlecycler_'
+OUT_PREFIX = 'sc_'
+# Our copies live in the add-on's own data folder, not in special://temp: Kodi treats files there
+# whose name contains "subtitle" as its own temporary subtitles, and loading them failed.
+OUT_DIR = xbmcvfs.translatePath('special://profile/addon_data/%s/subs/' % 'script.subtitle.cycler')
 PROP_SEEN = 'subtitlecycler.seen'
 STATE = os.path.join(TEMP, 'subtitlecycler.json')
 KODI_LOG = os.path.join(xbmcvfs.translatePath('special://logpath/'), 'kodi.log')
@@ -127,15 +130,16 @@ def busy_window():
 def _write_unique(data, ext):
     # Keep the few newest copies: Kodi may still be opening one of them. Kodi itself deletes
     # them all when playback stops.
-    old = sorted((os.path.join(TEMP, n) for n in os.listdir(TEMP) if n.startswith(OUT_PREFIX)),
+    os.makedirs(OUT_DIR, exist_ok=True)
+    old = sorted((os.path.join(OUT_DIR, n) for n in os.listdir(OUT_DIR) if n.startswith(OUT_PREFIX)),
                  key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0)
-    for name in old[:-3]:
+    for name in old[:-5]:
         try:
             os.remove(name)
         except OSError:
             pass
     # Kodi reuses an already loaded subtitle with the same path, so every file gets a new name
-    dst = os.path.join(TEMP, '%s%s%s' % (OUT_PREFIX, uuid.uuid4().hex[:12], ext))
+    dst = os.path.join(OUT_DIR, '%s%s%s' % (OUT_PREFIX, uuid.uuid4().hex[:12], ext))
     with open(dst, 'wb') as fh:
         fh.write(data)
     return dst
@@ -174,8 +178,8 @@ def load(player, sub, original=None):
     for _ in range(10):
         xbmc.sleep(100)
         if _parser_failed(mark):
-            fallback = copy_original(original)
-            log('Kodi could not parse %s, loading original %s as %s' % (sub, original, fallback),
+            fallback = original
+            log('Kodi could not parse %s, loading original %s' % (sub, original),
                 xbmc.LOGWARNING)
             player.setSubtitles(fallback)
             player.showSubtitles(True)
