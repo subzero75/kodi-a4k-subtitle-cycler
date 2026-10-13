@@ -198,7 +198,7 @@ def sync_cues(cues):
     a, b = res['a'], res['b']
     log('sync: x%.5f %+.0f ms (%d/%d lines matched)' % (a, b, res['matched'], res['total']))
     if abs(a - 1) < 1e-4 and abs(b) < 150:
-        return cues, None  # already in sync
+        return cues, 'in sync'  # nothing to change
     tag = 'sync %+.1fs' % (b / 1000.0)
     if abs(a - 1) >= 1e-4:
         tag += ' x%.3f' % a

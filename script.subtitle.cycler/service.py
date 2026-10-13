@@ -80,7 +80,13 @@ def check(player):
             sub, fixed = c.prepare(path)
             if fixed and player.isPlayingVideo():
                 c.log('service loading %s -> %s' % (path, sub))
-                c.load(player, sub, path)
+                tags = list(c.LAST_TAGS)
+                notes = list(c.NOTES)
+                if c.load(player, sub, path):
+                    # show what was done to a subtitle picked by hand, like the button does
+                    c.notify('%s  %s%s' % (' '.join('+' + t for t in tags) or 'in sync',
+                                           os.path.basename(path)[:60],
+                                           ''.join('  (%s)' % t for t in notes)), 4000)
         except Exception as e:
             c.log('failed on %s: %s' % (path, e), xbmc.LOGWARNING)
 
