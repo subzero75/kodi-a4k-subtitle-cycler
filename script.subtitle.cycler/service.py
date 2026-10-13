@@ -52,28 +52,46 @@ def in_busy(m, busy):
     return m >= a - 0.5 and (b == 0 or m <= b + 2)
 
 
+def skip(player, path, m, why):
+    """Remember a file we leave alone and say why once, so a missed subtitle can be explained."""
+    player.known[path] = m
+    c.log('service: not touching %s (%s)' % (os.path.basename(path), why))
+
+
 def check(player):
     gapfix = c.gapfix_on() or c.sync_on()
     now = time.time()
     busy = c.busy_window()
+    if busy and (busy[0] < player.start - 60 or (busy[1] == 0 and now - busy[0] > 90)):
+        busy = None  # left over from an earlier video or a press that never finished
     for path in candidates():
         try:
             st = os.stat(path)
         except OSError:
             continue
         m = st.st_mtime
-        if m < player.start or player.known.get(path) == m or now - m < 0.8 or st.st_size > MAX_SIZE:
+        if player.known.get(path) == m or now - m < 0.8:
+            continue
+        if m < player.start:
+            player.known[path] = m  # from an earlier video
+            continue
+        if st.st_size > MAX_SIZE:
+            skip(player, path, m, 'too big')
             continue
         if busy and busy[1] == 0 and m >= busy[0] - 0.5:
             continue  # script still downloading; look again once it is done
         player.known[path] = m
         if in_busy(m, busy):
+            c.log('service: %s comes from the button, leaving it to the button' % os.path.basename(path))
             continue  # written by the script's own downloads
         try:
             raw = c.read_bytes(path)
             text = c.decode(raw[:4096])
-            if not text or not (c.TS.search(text) or c.is_ass(c.decode(raw) or '')) \
-                    or c.digest(raw) in c.seen():
+            if not text or not (c.TS.search(text) or c.is_ass(c.decode(raw) or '')):
+                skip(player, path, m, 'not a text subtitle')
+                continue
+            if c.digest(raw) in c.seen():
+                skip(player, path, m, 'already loaded')
                 continue
             if not gapfix:
                 c.mark_seen(c.digest(raw))  # so the button skips it
