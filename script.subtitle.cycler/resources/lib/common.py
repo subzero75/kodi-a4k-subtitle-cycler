@@ -120,6 +120,87 @@ def close_gaps(text, max_gap, extend):
     return format_srt(gap_close(cues, max_gap, extend)) if cues else None
 
 
+# ---------------------------------------------------------------- ASS/SSA subtitles
+
+ASS_TIME = re.compile(r'^(\d+):(\d\d):(\d\d)[.:](\d{1,3})$')
+
+
+def is_ass(text):
+    return '[Events]' in text and 'Dialogue:' in text
+
+
+def _ass_ms(t):
+    m = ASS_TIME.match(t.strip())
+    if not m:
+        return None
+    h, mi, se, frac = m.groups()
+    return ((int(h) * 60 + int(mi)) * 60 + int(se)) * 1000 + int(frac.ljust(3, '0')[:3])
+
+
+def _ass_fmt(ms):
+    cs = int(round(ms / 10.0))
+    h, cs = divmod(cs, 360000)
+    m, cs = divmod(cs, 6000)
+    sec, cs = divmod(cs, 100)
+    return '%d:%02d:%02d.%02d' % (h, m, sec, cs)
+
+
+def parse_ass(text):
+    """(lines, cues): cues are [start_ms, end_ms, line index] of the Dialogue lines, sorted."""
+    lines = text.replace('\r\n', '\n').split('\n')
+    fields = ['layer', 'start', 'end', 'style', 'name', 'marginl', 'marginr', 'marginv', 'effect', 'text']
+    in_events = False
+    cues = []
+    for i, line in enumerate(lines):
+        st = line.strip()
+        if st.startswith('['):
+            in_events = st.lower() == '[events]'
+        elif in_events and st.lower().startswith('format:'):
+            fields = [f.strip().lower() for f in st.split(':', 1)[1].split(',')]
+        elif in_events and st.startswith('Dialogue:'):
+            parts = line.split(':', 1)[1].split(',', len(fields) - 1)
+            try:
+                a = _ass_ms(parts[fields.index('start')])
+                b = _ass_ms(parts[fields.index('end')])
+            except (ValueError, IndexError):
+                continue
+            if a is not None and b is not None:
+                cues.append([a, b, i])
+    cues.sort(key=lambda c: c[0])
+    return lines, cues, fields
+
+
+def format_ass(lines, cues, fields):
+    """Write the new times back into the Dialogue lines; lines of dropped cues are removed."""
+    keep = {}
+    for a, b, i in cues:
+        keep[i] = (a, b)
+    si, ei = fields.index('start'), fields.index('end')
+    out = []
+    dialogue = {i for i, l in enumerate(lines) if l.strip().startswith('Dialogue:')}
+    for i, line in enumerate(lines):
+        if i in keep:
+            head, rest = line.split(':', 1)
+            parts = rest.split(',', len(fields) - 1)
+            lead = parts[si][:len(parts[si]) - len(parts[si].lstrip())]
+            parts[si] = lead + _ass_fmt(keep[i][0])
+            parts[ei] = _ass_fmt(keep[i][1])
+            out.append(head + ':' + ','.join(parts))
+        elif i in dialogue and _ass_line_times(line, fields):
+            continue  # a parsed line that was dropped (shifted before 0:00)
+        else:
+            out.append(line)
+    return '\r\n'.join(out)
+
+
+def _ass_line_times(line, fields):
+    try:
+        parts = line.split(':', 1)[1].split(',', len(fields) - 1)
+        return _ass_ms(parts[fields.index('start')]) is not None
+    except (ValueError, IndexError):
+        return False
+
+
 # ---------------------------------------------------------------- sync to embedded subtitles
 
 REF_DIR = xbmcvfs.translatePath('special://profile/addon_data/%s/ref/' % ADDON_ID)
@@ -296,6 +377,22 @@ LAST_TAGS = []
 NOTES = []
 
 
+def _fix(cues, gap, sync):
+    """Sync and/or close gaps in place (cues: [start, end, payload]); returns the cues."""
+    if sync:
+        new, tag = sync_cues(cues)
+        cues[:] = new
+        if tag == 'no sync':
+            NOTES.append('timing differs from the video: other episode or cut?')
+        elif tag:
+            LAST_TAGS.append(tag)
+    if gap:
+        a = addon()
+        gap_close(cues, a.getSettingInt('max_gap'), a.getSettingInt('extend'))
+        LAST_TAGS.append('gapfix')
+    return cues
+
+
 def prepare(path):
     """Register the subtitle as seen and return (fresh copy to load, changed).
     What was changed ('gapfix', 'sync +1.2s') is left in LAST_TAGS."""
@@ -309,21 +406,22 @@ def prepare(path):
     if is_srt and (gap or sync):
         cues = parse_srt(decode(raw))
         if cues:
-            if sync:
-                cues, tag = sync_cues(cues)
-                if tag == 'no sync':
-                    NOTES.append('timing differs from the video: other episode or cut?')
-                elif tag:
-                    LAST_TAGS.append(tag)
-            if gap:
-                a = addon()
-                gap_close(cues, a.getSettingInt('max_gap'), a.getSettingInt('extend'))
-                LAST_TAGS.append('gapfix')
+            cues = _fix(cues, gap, sync)
         if LAST_TAGS:
             # Plain UTF-8 without BOM and with CRLF line ends, like the files Kodi loads fine
             dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt')
             log('%s: %s -> %s' % (', '.join(LAST_TAGS), path, dst))
             return dst, True
+    elif not is_srt and (gap or sync) and is_ass(decode(raw) or ''):
+        lines, cues, fields = parse_ass(decode(raw))
+        if cues:
+            _fix(cues, gap, sync)
+            if LAST_TAGS:
+                ext = os.path.splitext(path)[1].lower()
+                dst = _write_unique(format_ass(lines, cues, fields).encode('utf-8'),
+                                    ext if ext in ('.ass', '.ssa') else '.ass')
+                log('%s: %s -> %s' % (', '.join(LAST_TAGS), path, dst))
+                return dst, True
     ext = '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt')
     dst = _write_unique(raw, ext)
     log('copied: %s -> %s' % (path, dst))

@@ -37,7 +37,7 @@ Running the add-on from the Programs menu (with no video playing) opens its sett
 ## Notes
 
 - The button searches once per video and caches the results; later presses are fast. It skips subtitles already shown in the current video (for example the auto-downloaded one), so you never get the same file twice in a row.
-- Gap closing works on text SRT subtitles (UTF-8 and Windows-1256). Embedded image subtitles such as PGS are images, not text, and cannot be changed.
+- Gap closing and sync work on text SRT and ASS/SSA subtitles (UTF-8 and Windows-1256); ASS styling is kept. Embedded image subtitles such as PGS are images, not text, and cannot be changed.
 - Sync needs an MKV with a **text** subtitle track (SRT/ASS); image tracks (PGS, VobSub) and MP4 files are skipped. Only the start times are compared, so the languages do not have to match. Only a small part of the video is read (the cue index plus a sample of subtitle blocks, usually a few MB), so it also works for streamed debrid/Usenet files; the result is cached per video. When the timings do not line up clearly, the subtitle is left unchanged.
 - For TV episodes, results named for another episode (`S01E05`) or another season's pack (`S01`, `Season.01`) are left out of the list.
 - With sync on, a subtitle whose timing does not fit the video is skipped and the next one is tried (up to 3 per press). Subtitles picked by hand from Kodi's subtitle dialog get the same gap fix and sync, with the same notification.

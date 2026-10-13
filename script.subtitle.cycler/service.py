@@ -72,7 +72,8 @@ def check(player):
         try:
             raw = c.read_bytes(path)
             text = c.decode(raw[:4096])
-            if not text or not c.TS.search(text) or c.digest(raw) in c.seen():
+            if not text or not (c.TS.search(text) or c.is_ass(c.decode(raw) or '')) \
+                    or c.digest(raw) in c.seen():
                 continue
             if not gapfix:
                 c.mark_seen(c.digest(raw))  # so the button skips it
