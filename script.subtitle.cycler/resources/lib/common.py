@@ -415,14 +415,61 @@ def _fix(cues, gap, sync):
     return cues
 
 
-def prepare(path):
-    """Register the subtitle as seen and return (fresh copy to load, changed).
+SUB_EXTS = ('.srt', '.ass', '.ssa', '.vtt', '.sub', '.smi')
+NUMBERS = re.compile(r'\d+')
+
+
+def unpack(raw, episodes=()):
+    """Subtitle files inside a zip archive, the ones named after the episode first."""
+    import io, zipfile
+    try:
+        z = zipfile.ZipFile(io.BytesIO(raw))
+        names = [n for n in z.namelist() if os.path.splitext(n)[1].lower() in SUB_EXTS]
+        hint = {int(e) for e in episodes or ()}
+        names.sort(key=lambda n: not hint & {int(x) for x in NUMBERS.findall(os.path.basename(n))})
+        return [(n, z.read(n)) for n in names[:12]]
+    except Exception as e:
+        log('could not open archive: %s' % e)
+        return []
+
+
+def unusable(why, path):
+    NOTES.append(why)
+    log('%s: %s' % (why, path))
+    return None, False
+
+
+def prepare(path, episodes=()):
+    """Register the subtitle as seen and return (fresh copy to load, changed); (None, False)
+    when it is not a subtitle Kodi can show (NOTES says why).
     What was changed ('gapfix', 'sync +1.2s') is left in LAST_TAGS."""
-    del LAST_TAGS[:]
-    del NOTES[:]
     raw = read_bytes(path)
     mark_seen(digest(raw))
+    if raw[:4] == b'PK\x03\x04':
+        # Some sites hand out zip archives (season packs, or a text file with a link)
+        entries = unpack(raw, episodes)
+        if not entries:
+            del LAST_TAGS[:]
+            del NOTES[:]
+            return unusable('archive without subtitles', path)
+        for name, data in entries:
+            got = _prepare_raw(data, '%s/%s' % (path, name))
+            if got[0] and not NOTES:
+                break
+        return got
+    if raw[:4] == b'Rar!' or raw[:6] == b"7z\xbc\xaf'\x1c":
+        del LAST_TAGS[:]
+        del NOTES[:]
+        return unusable('archive type not supported', path)
+    return _prepare_raw(raw, path)
+
+
+def _prepare_raw(raw, path):
+    del LAST_TAGS[:]
+    del NOTES[:]
     text = decode(raw[:4096]) or ''
+    if not raw.strip() or ('\x00' in text and not _utf16(raw)):
+        return unusable('not a subtitle file', path)
     is_srt = bool(TS.search(text))
     gap, sync = gapfix_on(), sync_on()
     if is_srt and (gap or sync):
@@ -444,7 +491,12 @@ def prepare(path):
                                     ext if ext in ('.ass', '.ssa') else '.ass')
                 log('%s: %s -> %s' % (', '.join(LAST_TAGS), path, dst))
                 return dst, True
-    ext = '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt')
+    ext = os.path.splitext(path)[1].lower()
+    if not is_srt and ext not in SUB_EXTS and not is_ass(text) and not re.search(r'^WEBVTT', text):
+        # No subtitle timings anywhere: a text note, a web page, a broken download...
+        log('format not recognised; first bytes: %r' % raw[:48])
+        return unusable('not a subtitle file', path)
+    ext = '.srt' if is_srt else (ext if ext in SUB_EXTS else '.srt')
     dst = _write_unique(raw, ext)
     log('copied: %s -> %s' % (path, dst))
     if (gap or sync) and not is_srt:

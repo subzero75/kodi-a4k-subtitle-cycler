@@ -24,6 +24,20 @@ def playing_episode():
         return None
 
 
+EPISODE_NUMBER = re.compile(r'(?:\s-\s|\bE|\bEP\s?|\bEpisode\s)(\d{1,4})(?!\d|\s?[-~]\s?\d)', re.I)
+RANGE = re.compile(r'\d+\s?[-~]\s?\d+')
+
+
+def anime_rank(label, hints):
+    """0: named after this episode, 1: pack or unknown, 2: another episode."""
+    if RANGE.search(label) and not EPISODE_NUMBER.search(RANGE.sub('', label)):
+        return 1
+    found = {int(n) for n in EPISODE_NUMBER.findall(label)}
+    if not found or not hints:
+        return 1
+    return 0 if found & hints else 2
+
+
 def otaku_metas():
     """Lookups for subtitle sites when an anime from Otaku is playing (it gives Kodi no IMDb id)."""
     if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
@@ -48,6 +62,7 @@ def search():
         episodes = {(m['season'], m['episode']) for m in anime if not m['movie']} or None
     else:
         episodes = {playing_episode()} if playing_episode() else None
+    hints = {e[1] for e in episodes or ()}
     results = []
     for addon_id, name in services():
         if anime and addon_id == 'service.subtitles.a4ksubtitles':
@@ -62,7 +77,8 @@ def search():
                 new = [f for f in found if f['file'] not in seen_files]
                 seen_files.update(f['file'] for f in new)
                 for f in new:
-                    results.append({'label': '%s - %s' % (name, f['label']), 'file': f['file']})
+                    results.append({'label': '%s - %s' % (name, f['label']), 'file': f['file'],
+                                    'rank': anime_rank(f['label'], hints)})
                 c.log('%s (anime %s): %d results, %d new' % (
                     addon_id, meta['imdb_id'] or meta.get('title'), len(found), len(new)))
             continue
@@ -87,7 +103,12 @@ def search():
             kept += 1
             results.append({'label': '%s - %s' % (name, label), 'file': f['file']})
         c.log('%s: %d results, %d for other episodes or seasons left out' % (addon_id, len(found), len(found) - kept))
-    return results
+    if anime:
+        # Anime release names number episodes their own way ("- 05", "[EP 371]", "1-13"):
+        # try the ones named after this episode first, packs next, other episodes last
+        results.sort(key=lambda r: r.get('rank', 1))
+        c.log('anime results, best first: %s' % ['%s %s' % (r.get('rank', 1), r['label'][-60:]) for r in results])
+    return results, hints
 
 
 def download(item):
@@ -137,11 +158,11 @@ def cycle(p):
     st = load_state()
     if st.get('video') != cur or not st.get('results'):
         c.notify('...', 2000)
-        res = search()
+        res, hints = search()
         if not res:
             c.notify('No subtitles found')
             return
-        st = {'video': cur, 'results': res, 'index': -1}
+        st = {'video': cur, 'results': res, 'index': -1, 'episodes': sorted(hints)}
     # Remember per result what was downloaded, so results are not downloaded again and again
     # (subtitle sites have daily download limits)
     hashes = st.setdefault('hashes', {})
@@ -173,7 +194,12 @@ def cycle(p):
             hashes[str(i)] = c.digest(raw)
             if hashes[str(i)] in already:
                 continue
-            prep = c.prepare(got)
+            prep = c.prepare(got, st.get('episodes') or ())
+            if prep[0] is None:
+                # A zip with a text note, a broken download...: never worth showing
+                failed.add(i)
+                checked += 1
+                continue
             if c.NOTES and not force:
                 # Timing does not fit this video (other episode or cut): try the next one
                 c.log('skipping %d/%d, timing does not fit the video' % (i + 1, n))
