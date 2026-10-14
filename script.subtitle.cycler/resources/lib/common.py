@@ -222,20 +222,36 @@ def fix_playres(lines):
                     pass
         elif section == '[events]' and st.startswith('Dialogue:'):
             coords.extend(float(x) for m in POS.findall(st) for x in m)
-    if info is None:
-        return False
     size = sorted(sizes)[len(sizes) // 2] if sizes else 0  # the usual dialogue size
     big = max(coords + margins + [0])
-    if size >= 45 or big > 1300:
+    override = kodi_overrides_ass_styles()
+    if override or size >= 45 or big > 1300:
+        # Kodi's own style (font, margins) is made for a 1080p canvas
         w, h = 1920, 1080
     elif size >= 28 or big > 700:
         w, h = 1280, 720
     else:
-        return False  # sizes fit the default canvas
+        w, h = 384, 288  # what libass assumes anyway; written down so Kodi knows it too
+    if info is None:
+        lines[0:0] = ['[Script Info]', 'ScriptType: v4.00+', '']
+        info = 0
     lines.insert(info + 1, 'PlayResY: %d' % h)
     lines.insert(info + 1, 'PlayResX: %d' % w)
-    log('subtitle has no PlayResX/PlayResY, added %dx%d (font size %g)' % (w, h, size))
+    log('subtitle has no PlayResX/PlayResY, added %dx%d (font size %g, Kodi overrides styles: %s)'
+        % (w, h, size, override))
     return True
+
+
+def kodi_overrides_ass_styles():
+    """True when Kodi draws ASS subtitles with its own style (Settings > Player > Language)."""
+    try:
+        value = rpc('Settings.GetSettingValue', {'setting': 'subtitles.overridestyles'}).get('value')
+        log('Kodi setting subtitles.overridestyles = %r' % (value,))
+        if isinstance(value, bool):
+            return value
+        return int(value or 0) >= 2  # 0 never, 1 positions, 2 styles, 3 styles and positions
+    except Exception:
+        return False
 
 
 def format_ass(lines, cues, fields):
@@ -532,10 +548,11 @@ def _prepare_raw(raw, path):
             return dst, True
     elif not is_srt and is_ass(decode(raw) or ''):
         lines, cues, fields = parse_ass(decode(raw))
+        before = len(lines)
         res = fix_playres(lines)
         if res:
-            # line indexes of the cues moved by the two inserted lines
-            cues = [[a, b, i + 2] for a, b, i in cues]
+            # line indexes of the cues moved by the inserted lines (all above the events)
+            cues = [[a, b, i + len(lines) - before] for a, b, i in cues]
         if cues or res:
             if cues and (gap or sync):
                 _fix(cues, gap, sync)
