@@ -189,6 +189,55 @@ def parse_ass(text):
     return lines, cues, fields
 
 
+POS = re.compile(r'\\(?:pos|move|org)\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)')
+
+
+def fix_playres(lines):
+    """Add PlayResX/PlayResY when the file has none; returns True when it did.
+
+    Without them libass assumes a 384x288 canvas. Files made for 1080p video then get
+    their margins and sizes read on that tiny canvas: text squeezed into a narrow column,
+    one word per line."""
+    info = style_fmt = None
+    sizes, margins, coords = [], [], []
+    section = ''
+    for i, line in enumerate(lines):
+        st = line.strip()
+        low = st.lower()
+        if st.startswith('['):
+            section = low
+            if low == '[script info]':
+                info = i
+        elif section == '[script info]' and low.startswith(('playresx', 'playresy')):
+            return False
+        elif section in ('[v4+ styles]', '[v4 styles]') and low.startswith('format:'):
+            style_fmt = [f.strip().lower() for f in st.split(':', 1)[1].split(',')]
+        elif section in ('[v4+ styles]', '[v4 styles]') and low.startswith('style:') and style_fmt:
+            parts = st.split(':', 1)[1].split(',')
+            for key, out in (('fontsize', sizes), ('marginl', margins), ('marginr', margins),
+                             ('marginv', margins)):
+                try:
+                    out.append(float(parts[style_fmt.index(key)]))
+                except (ValueError, IndexError):
+                    pass
+        elif section == '[events]' and st.startswith('Dialogue:'):
+            coords.extend(float(x) for m in POS.findall(st) for x in m)
+    if info is None:
+        return False
+    size = sorted(sizes)[len(sizes) // 2] if sizes else 0  # the usual dialogue size
+    big = max(coords + margins + [0])
+    if size >= 45 or big > 1300:
+        w, h = 1920, 1080
+    elif size >= 28 or big > 700:
+        w, h = 1280, 720
+    else:
+        return False  # sizes fit the default canvas
+    lines.insert(info + 1, 'PlayResY: %d' % h)
+    lines.insert(info + 1, 'PlayResX: %d' % w)
+    log('subtitle has no PlayResX/PlayResY, added %dx%d (font size %g)' % (w, h, size))
+    return True
+
+
 def format_ass(lines, cues, fields):
     """Write the new times back into the Dialogue lines; lines of dropped cues are removed."""
     keep = {}
@@ -481,11 +530,16 @@ def _prepare_raw(raw, path):
             dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt')
             log('%s: %s -> %s' % (', '.join(LAST_TAGS), path, dst))
             return dst, True
-    elif not is_srt and (gap or sync) and is_ass(decode(raw) or ''):
+    elif not is_srt and is_ass(decode(raw) or ''):
         lines, cues, fields = parse_ass(decode(raw))
-        if cues:
-            _fix(cues, gap, sync)
-            if LAST_TAGS:
+        res = fix_playres(lines)
+        if res:
+            # line indexes of the cues moved by the two inserted lines
+            cues = [[a, b, i + 2] for a, b, i in cues]
+        if cues or res:
+            if cues and (gap or sync):
+                _fix(cues, gap, sync)
+            if LAST_TAGS or res:
                 ext = os.path.splitext(path)[1].lower()
                 dst = _write_unique(format_ass(lines, cues, fields).encode('utf-8'),
                                     ext if ext in ('.ass', '.ssa') else '.ass')
