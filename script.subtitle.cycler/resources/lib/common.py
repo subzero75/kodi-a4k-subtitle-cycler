@@ -214,31 +214,36 @@ def fix_playres(lines):
             style_fmt = [f.strip().lower() for f in st.split(':', 1)[1].split(',')]
         elif section in ('[v4+ styles]', '[v4 styles]') and low.startswith('style:') and style_fmt:
             parts = st.split(':', 1)[1].split(',')
-            for key, out in (('fontsize', sizes), ('marginl', margins), ('marginr', margins),
-                             ('marginv', margins)):
-                try:
-                    out.append(float(parts[style_fmt.index(key)]))
-                except (ValueError, IndexError):
-                    pass
+            try:
+                sizes.append(float(parts[style_fmt.index('fontsize')]))
+            except (ValueError, IndexError):
+                pass
+            try:
+                lr = float(parts[style_fmt.index('marginl')]) + float(parts[style_fmt.index('marginr')])
+                margins.append(lr)
+            except (ValueError, IndexError):
+                pass
         elif section == '[events]' and st.startswith('Dialogue:'):
             coords.extend(float(x) for m in POS.findall(st) for x in m)
     size = sorted(sizes)[len(sizes) // 2] if sizes else 0  # the usual dialogue size
-    big = max(coords + margins + [0])
     override = kodi_overrides_ass_styles()
-    if override or size >= 45 or big > 1300:
+    canvases = [(384, 288), (640, 360), (1280, 720), (1920, 1080)]
+    if override:
         # Kodi's own style (font, margins) is made for a 1080p canvas
         w, h = 1920, 1080
-    elif size >= 28 or big > 700:
-        w, h = 1280, 720
     else:
-        w, h = 384, 288  # what libass assumes anyway; written down so Kodi knows it too
+        # the smallest canvas on which the file's sizes make sense: text of normal size,
+        # left+right margins leaving most of the width for the text, \pos inside the picture
+        need = max([m * 2.5 for m in margins] + coords[0::2] + [0])
+        need_h = max([size * 12.5] + coords[1::2] + [0])  # dialogue text is ~8% of the height
+        w, h = next(((cw, ch) for cw, ch in canvases if cw >= need and ch >= need_h), canvases[-1])
     if info is None:
         lines[0:0] = ['[Script Info]', 'ScriptType: v4.00+', '']
         info = 0
     lines.insert(info + 1, 'PlayResY: %d' % h)
     lines.insert(info + 1, 'PlayResX: %d' % w)
-    log('subtitle has no PlayResX/PlayResY, added %dx%d (font size %g, Kodi overrides styles: %s)'
-        % (w, h, size, override))
+    log('subtitle has no PlayResX/PlayResY, added %dx%d (font size %g, side margins up to %g, '
+        'Kodi overrides styles: %s)' % (w, h, size, max(margins + [0]), override))
     return True
 
 
