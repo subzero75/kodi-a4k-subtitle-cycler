@@ -40,3 +40,23 @@ msgstr "مزامنة التوقيت مع الترجمة المدمجة في ال
 msgctxt "#32008"
 msgid "For MKV videos with a text subtitle track (any language): shift external SRT subtitles so their timing matches it. Reads only a small part of the video."
 msgstr "لملفات MKV التي فيها ترجمة نصية مدمجة (بأي لغة): يضبط توقيت ترجمات SRT الخارجية ليتطابق معها. يقرأ جزءاً صغيراً فقط من الفيديو."
+
+msgctxt "#32009"
+msgid "Anime from Otaku"
+msgstr "الأنمي من Otaku"
+
+msgctxt "#32010"
+msgid "Find subtitles for anime played from Otaku"
+msgstr "البحث عن ترجمات للأنمي المشغّل من Otaku"
+
+msgctxt "#32011"
+msgid "Otaku gives Kodi no IMDb id, so a4kSubtitles cannot search. With this on, the button looks the ids up in Otaku's own database and searches a4kSubtitles with them."
+msgstr "إضافة Otaku لا تعطي كودي رقم IMDb، فلا يستطيع a4kSubtitles البحث. عند التفعيل يأخذ الزر الأرقام من قاعدة بيانات Otaku ويبحث بها في a4kSubtitles."
+
+msgctxt "#32012"
+msgid "Load a subtitle automatically when an Otaku episode starts"
+msgstr "تحميل ترجمة تلقائياً عند بدء حلقة من Otaku"
+
+msgctxt "#32013"
+msgid "About 15 seconds after an Otaku episode starts, the first subtitle that fits the video is loaded."
+msgstr "بعد نحو 15 ثانية من بدء الحلقة تُحمَّل أول ترجمة تناسب الفيديو."
