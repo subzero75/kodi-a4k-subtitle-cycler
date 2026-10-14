@@ -382,6 +382,13 @@ def gapfix_on():
     return addon().getSettingBool('gapfix')
 
 
+def setting_on(key, default=True):
+    try:
+        return addon().getSettingBool(key)
+    except Exception:
+        return default
+
+
 def sync_on():
     try:
         return addon().getSettingBool('sync')

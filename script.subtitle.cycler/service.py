@@ -31,7 +31,7 @@ class Player(xbmc.Player):
         self.prefetch = time.time() + 5
         self.start = time.time() - 3
         # a4kSubtitles cannot auto-download for Otaku anime (no IMDb id): do it with the button logic
-        self.anime_auto = time.time() + 15 if self._is_otaku() else 0
+        self.anime_auto = time.time() + 15 if self._is_otaku() and c.setting_on('otaku_auto') else 0
         self.known = {}
         c.reset_seen()
         # New playback: forget the previous result list so the next press searches again

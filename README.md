@@ -1,10 +1,11 @@
 # Subtitle Cycler for Kodi
 
-A Kodi add-on with three independent features:
+A Kodi add-on with four independent features:
 
 1. **One-button subtitle cycling** – press a remote button during playback to download and load the next subtitle result from **all enabled subtitle add-ons** (a4kSubtitles, OpenSubtitles, Subdl, …). A notification shows `index/total  source - language`.
 2. **No gaps between subtitle lines** (optional) – a background service closes short gaps between lines of every external SRT subtitle, however it was loaded: auto-downloaded at start, picked from Kodi's subtitle window, or loaded with the button. The text no longer blinks between lines.
 3. **Sync to the embedded subtitles** (optional, **experimental**) – when the video is an MKV with a text subtitle track (in any language), external SRT subtitles are shifted, and stretched for 23.976/24/25 fps mix-ups, so their timing matches that track. Handy when the only well-timed track is in another language than the one you want.
+4. **Subtitles for anime from [Otaku](https://github.com/Goldenfreddy0703/Otaku)** (optional, **experimental**) – Otaku gives Kodi no IMDb id, so a4kSubtitles finds nothing for its anime. The add-on takes the ids from Otaku's own database, searches a4kSubtitles with them and with the show's title, and loads the first subtitle that fits the episode. Tested only with *Bleach: Thousand-Year Blood War* so far.
 
 Tested on Kodi 22 Beta 2 / CoreELEC (Ugoos AM9 Pro).
 
@@ -33,6 +34,8 @@ Running the add-on from the Programs menu (with no video playing) opens its sett
 | Close gaps up to (ms) | 1500 | Gaps this short or shorter are closed: a line stays until the next one starts |
 | Keep line longer on long gaps (ms) | 2000 | Longer gaps: the line stays this much longer, then the pause stays empty. 0 = off |
 | Sync timing to the video's embedded subtitles | Off | Experimental. Shift external SRTs to match the MKV's text subtitle track. The notification shows `+sync -2.4s` when the timing was changed, `+in sync` when it already matched, and *timing differs from the video* when the subtitle belongs to another episode or cut. Turn it off for the quickest cycling |
+| Find subtitles for anime played from Otaku | On | Experimental. a4kSubtitles search with the ids from Otaku's database. Only does something while an Otaku episode plays |
+| Load a subtitle automatically when an Otaku episode starts | On | About 15 seconds after the episode starts, the first subtitle that fits the video is loaded |
 
 ## Notes
 

@@ -21,6 +21,8 @@ def remember_playback():
     """When playback starts, note the Otaku item being played (taken from kodi.log)."""
     home = xbmcgui.Window(10000)
     home.clearProperty(PROP)
+    if not c.setting_on('otaku'):
+        return
     try:
         size = os.path.getsize(c.KODI_LOG)
         with open(c.KODI_LOG, 'rb') as fh:

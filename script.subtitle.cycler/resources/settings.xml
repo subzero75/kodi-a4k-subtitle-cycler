@@ -44,6 +44,21 @@
           <control type="toggle"/>
         </setting>
       </group>
+      <group id="2" label="32009">
+        <setting id="otaku" type="boolean" label="32010" help="32011">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="otaku_auto" type="boolean" label="32012" help="32013">
+          <level>0</level>
+          <default>true</default>
+          <dependencies>
+            <dependency type="enable" setting="otaku">true</dependency>
+          </dependencies>
+          <control type="toggle"/>
+        </setting>
+      </group>
     </category>
   </section>
 </settings>
