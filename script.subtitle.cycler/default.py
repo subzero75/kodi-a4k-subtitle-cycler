@@ -24,11 +24,46 @@ def playing_episode():
         return None
 
 
+def otaku_meta():
+    """Ids for subtitle sites when an anime from Otaku is playing (it gives Kodi no IMDb id)."""
+    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
+        return None
+    from resources.lib import otaku
+    item = otaku.current()
+    if not item:
+        return None
+    try:
+        meta = otaku.lookup(item)
+    except Exception as e:
+        c.log('otaku lookup failed: %s' % e, xbmc.LOGWARNING)
+        return None
+    if meta:
+        c.log('otaku: mal %s episode %s -> %s%s' % (
+            item['mal_id'], item['episode'], meta['imdb_id'],
+            '' if meta['movie'] else ' S%02dE%02d' % (meta['season'], meta['episode'])))
+    return meta
+
+
 def search():
     langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or ['English']
-    episode = playing_episode()
+    anime = otaku_meta()
+    if anime:
+        episode = None if anime['movie'] else (anime['season'], anime['episode'])
+    else:
+        episode = playing_episode()
     results = []
     for addon_id, name in services():
+        if anime and addon_id == 'service.subtitles.a4ksubtitles':
+            from resources.lib import otaku
+            try:
+                found = otaku.a4k_search(anime, langs)
+            except Exception as e:
+                c.log('a4k search for anime failed: %s' % e, xbmc.LOGWARNING)
+                found = []
+            for f in found:
+                results.append({'label': '%s - %s' % (name, f['label']), 'file': f['file']})
+            c.log('%s (anime ids): %d results' % (addon_id, len(found)))
+            continue
         url = 'plugin://%s/?action=search&languages=%s&preferredlanguage=%s' % (
             addon_id, quote(','.join(langs)), quote(langs[0]))
         found = [f for f in c.listdir(url) if f.get('file')]

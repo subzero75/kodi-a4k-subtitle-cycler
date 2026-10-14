@@ -12,10 +12,26 @@ class Player(xbmc.Player):
         self.start = 0
         self.known = {}
         self.prefetch = 0
+        self.anime_auto = 0
+
+    @staticmethod
+    def _is_otaku():
+        try:
+            from resources.lib import otaku
+            return bool(otaku.current())
+        except Exception:
+            return False
 
     def onAVStarted(self):
+        try:
+            from resources.lib import otaku
+            otaku.remember_playback()
+        except Exception as e:
+            c.log('otaku check failed: %s' % e, xbmc.LOGWARNING)
         self.prefetch = time.time() + 5
         self.start = time.time() - 3
+        # a4kSubtitles cannot auto-download for Otaku anime (no IMDb id): do it with the button logic
+        self.anime_auto = time.time() + 15 if self._is_otaku() else 0
         self.known = {}
         c.reset_seen()
         # New playback: forget the previous result list so the next press searches again
@@ -124,6 +140,11 @@ def run():
                         c.reference_starts(player.getPlayingFile(), quiet=True)
                     except Exception as e:
                         c.log('prefetch failed: %s' % e, xbmc.LOGWARNING)
+            if player.anime_auto and time.time() > player.anime_auto:
+                player.anime_auto = 0
+                if not c.seen():  # no subtitle was loaded yet
+                    c.log('otaku anime: loading a subtitle automatically')
+                    xbmc.executebuiltin('RunScript(script.subtitle.cycler)')
             check(player)
 
 

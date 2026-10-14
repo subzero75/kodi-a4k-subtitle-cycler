@@ -1,0 +1,131 @@
+"""Subtitles for anime played from the Otaku add-on.
+
+Otaku takes its anime data from AniList/MAL and does not tell Kodi the IMDb id, so
+a4kSubtitles refuses to search ("missing imdb id"). Otaku's own mapping database does know
+the IMDb id and the TVDB season of most anime; with those we ask a4kSubtitles to search
+through its API, using the season/episode numbering that subtitle sites use.
+"""
+import json, os, re, sqlite3, sys
+from urllib.parse import quote_plus
+import xbmc, xbmcgui, xbmcvfs
+from resources.lib import common as c
+
+PROP = 'subtitlecycler.otaku'
+A4K = 'service.subtitles.a4ksubtitles'
+OPEN_FILE = re.compile(rb'VideoPlayer::OpenFile: (plugin://\S+)')
+OTAKU_URL = re.compile(r'plugin://plugin\.video\.otaku/(play|play_movie)/(\d+)/(\d*)')
+NUMBER = re.compile(r'\d+')
+
+
+def remember_playback():
+    """When playback starts, note the Otaku item being played (taken from kodi.log)."""
+    home = xbmcgui.Window(10000)
+    home.clearProperty(PROP)
+    try:
+        size = os.path.getsize(c.KODI_LOG)
+        with open(c.KODI_LOG, 'rb') as fh:
+            fh.seek(max(0, size - 4 * 1024 * 1024))
+            found = OPEN_FILE.findall(fh.read())
+    except OSError:
+        return
+    if not found:
+        return
+    m = OTAKU_URL.match(found[-1].decode('utf-8', 'replace'))
+    if not m:
+        return  # the last plugin item played was not from Otaku
+    item = {'movie': m.group(1) == 'play_movie', 'mal_id': int(m.group(2)),
+            'episode': int(m.group(3) or 0)}
+    home.setProperty(PROP, json.dumps(item))
+    c.log('otaku playback: %s' % item)
+
+
+def current():
+    try:
+        return json.loads(xbmcgui.Window(10000).getProperty(PROP) or 'null')
+    except ValueError:
+        return None
+
+
+def _first_number(text):
+    m = NUMBER.search(str(text or ''))
+    return int(m.group()) if m else None
+
+
+def _last_number(text):
+    found = NUMBER.findall(str(text or ''))
+    return int(found[-1]) if found else None
+
+
+def lookup(item):
+    """{'imdb_id', 'season', 'episode', 'movie'} for subtitle sites, or None."""
+    db = xbmcvfs.translatePath('special://profile/addon_data/plugin.video.otaku/mappings.db')
+    if not os.path.exists(db):
+        c.log('otaku: mappings.db not found')
+        return None
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    try:
+        row = con.execute('SELECT * FROM anime WHERE mal_id=?', (item['mal_id'],)).fetchone()
+        if not row:
+            c.log('otaku: no mapping for mal_id %s' % item['mal_id'])
+            return None
+        row = dict(row)
+        season = row.get('thetvdb_season')
+        offset = (_first_number(row.get('global_media_episodes')) or 1) - 1
+        if not row.get('imdb_id'):
+            # New parts often have no ids yet: take them from the earlier parts of the same
+            # show ("Title - Part name" -> "Title") and continue their episode numbering.
+            base = (row.get('mal_title') or '').split(' - ')[0]
+            siblings = [dict(r) for r in con.execute(
+                "SELECT * FROM anime WHERE (mal_title=? OR mal_title LIKE ?) AND imdb_id IS NOT NULL "
+                "AND imdb_id != '' AND mal_id != ?", (base, base + ' - %', item['mal_id']))]
+            siblings = [s for s in siblings if str(s.get('thetvdb_season') or '').isdigit()
+                        and int(s['thetvdb_season']) > 0]
+            if not siblings:
+                c.log('otaku: no IMDb id for "%s"' % row.get('mal_title'))
+                return None
+            season = max(int(s['thetvdb_season']) for s in siblings)
+            same = [s for s in siblings if int(s['thetvdb_season']) == season]
+            row['imdb_id'] = same[0]['imdb_id']
+            offset = max(_last_number(s.get('global_media_episodes')) or 0 for s in same)
+            c.log('otaku: "%s" has no ids, using %s season %s after episode %d' % (
+                row.get('mal_title'), row['imdb_id'], season, offset))
+        if item.get('movie'):
+            return {'imdb_id': row['imdb_id'], 'movie': True, 'title': row.get('mal_title')}
+        if not str(season or '').isdigit() or int(season) == 0:
+            season, offset = 1, 0  # absolute numbering ("a") or specials: best effort
+        return {'imdb_id': row['imdb_id'], 'season': int(season),
+                'episode': offset + item['episode'], 'movie': False, 'title': row.get('mal_title')}
+    finally:
+        con.close()
+
+
+def a4k_search(meta, langs):
+    """Search a4kSubtitles with our ids; returns [{'label', 'file'}] like a plugin listing."""
+    path = xbmcvfs.translatePath('special://home/addons/%s' % A4K)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    from a4kSubtitles.api import A4kSubtitlesApi
+    core = A4kSubtitlesApi().core
+    # a4k reads the playing video's details through these info labels; answer the ids
+    # ourselves and leave everything else (file name, title) to Kodi. Reporting Kodi 19 makes
+    # a4k use the info labels instead of the video info tag.
+    labels = {'System.BuildVersionCode': '19.1.0', 'VideoPlayer.IMDBNumber': meta['imdb_id']}
+    if not meta['movie']:
+        labels.update({'VideoPlayer.Season': str(meta['season']),
+                       'VideoPlayer.Episode': str(meta['episode'])})
+        if not xbmc.getInfoLabel('VideoPlayer.TVShowTitle'):
+            labels['VideoPlayer.TVShowTitle'] = meta.get('title') or ''
+    real = core.kodi.xbmc.getInfoLabel
+    core.kodi.xbmc.getInfoLabel = lambda label: labels[label] if label in labels else real(label)
+    try:
+        params = {'languages': ','.join(langs), 'preferredlanguage': langs[0]}
+        results = core.search(core, params) or []
+    finally:
+        core.kodi.xbmc.getInfoLabel = real
+    out = []
+    for r in results:
+        url = 'plugin://%s/?action=download&service_name=%s&action_args=%s' % (
+            A4K, r['service_name'], quote_plus(json.dumps(r['action_args'])))
+        out.append({'label': '%s %s' % (r.get('lang') or '', r.get('name') or ''), 'file': url})
+    return out
