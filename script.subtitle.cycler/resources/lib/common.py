@@ -290,6 +290,9 @@ def sync_cues(cues):
     ref = reference_starts(video)
     if not ref:
         return cues, None
+    if len(ref) < 30:
+        log('sync: only %d reference lines, too few to judge' % len(ref))
+        return cues, None
     from resources.lib import subsync
     res = subsync.find_shift(ref, [c[0] for c in cues])
     if not res:

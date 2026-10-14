@@ -100,6 +100,40 @@ def lookup(item):
         con.close()
 
 
+SXXEYY = re.compile(r'(?<![a-z0-9])s(\d{1,2})[ ._-]?e(\d{1,3})(?!\d)', re.I)
+
+
+def candidates(item):
+    """Ways to look this anime up on subtitle sites, best first.
+
+    1. Otaku's mapping: IMDb id with the TVDB season (e.g. Bleach S17E43).
+    2. The show's own English title and the numbering of the release (e.g. "BLEACH:
+       Thousand-Year Blood War" S01E03); many sites list newer parts as separate shows.
+       a4kSubtitles looks the IMDb id up from the title.
+    """
+    out = []
+    try:
+        mapped = lookup(item)
+    except Exception as e:
+        c.log('otaku lookup failed: %s' % e, xbmc.LOGWARNING)
+        mapped = None
+    if mapped:
+        out.append(mapped)
+    show = xbmc.getInfoLabel('VideoPlayer.TVShowTitle') or xbmc.getInfoLabel('VideoPlayer.Title')
+    base = show.split(' - ')[0].strip()
+    if base:
+        meta = {'imdb_id': '', 'movie': bool(item.get('movie')), 'title': base}
+        if not meta['movie']:
+            m = SXXEYY.search(os.path.basename(xbmc.Player().getPlayingFile()))
+            season, episode = (int(m.group(1)), int(m.group(2))) if m else (
+                int(xbmc.getInfoLabel('VideoPlayer.Season') or 1), item['episode'])
+            meta.update({'tvshow': base, 'season': season, 'episode': episode})
+        if not any(o['movie'] == meta['movie'] and o.get('season') == meta.get('season')
+                   and o.get('episode') == meta.get('episode') and o.get('title') == base for o in out):
+            out.append(meta)
+    return out
+
+
 def a4k_search(meta, langs):
     """Search a4kSubtitles with our ids; returns [{'label', 'file'}] like a plugin listing."""
     path = xbmcvfs.translatePath('special://home/addons/%s' % A4K)
@@ -109,20 +143,26 @@ def a4k_search(meta, langs):
     core = A4kSubtitlesApi().core
     # a4k reads the playing video's details through these info labels; answer the ids
     # ourselves and leave everything else (file name, title) to Kodi. Reporting Kodi 19 makes
-    # a4k use the info labels instead of the video info tag.
+    # a4k use the info labels instead of the video info tag. An empty IMDb id makes a4k look
+    # it up from the show title.
     labels = {'System.BuildVersionCode': '19.1.0', 'VideoPlayer.IMDBNumber': meta['imdb_id']}
     if not meta['movie']:
         labels.update({'VideoPlayer.Season': str(meta['season']),
                        'VideoPlayer.Episode': str(meta['episode'])})
-        if not xbmc.getInfoLabel('VideoPlayer.TVShowTitle'):
-            labels['VideoPlayer.TVShowTitle'] = meta.get('title') or ''
+        if meta.get('tvshow') or not xbmc.getInfoLabel('VideoPlayer.TVShowTitle'):
+            labels['VideoPlayer.TVShowTitle'] = meta.get('tvshow') or meta.get('title') or ''
+    elif not meta['imdb_id'] and meta.get('title'):
+        labels['VideoPlayer.OriginalTitle'] = meta['title']
     real = core.kodi.xbmc.getInfoLabel
+    real_notify = core.kodi.notification
     core.kodi.xbmc.getInfoLabel = lambda label: labels[label] if label in labels else real(label)
+    core.kodi.notification = lambda *a, **k: None  # no "IMDB ID is not provided" pop-ups
     try:
         params = {'languages': ','.join(langs), 'preferredlanguage': langs[0]}
         results = core.search(core, params) or []
     finally:
         core.kodi.xbmc.getInfoLabel = real
+        core.kodi.notification = real_notify
     out = []
     for r in results:
         url = 'plugin://%s/?action=download&service_name=%s&action_args=%s' % (

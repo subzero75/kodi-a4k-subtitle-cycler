@@ -24,45 +24,47 @@ def playing_episode():
         return None
 
 
-def otaku_meta():
-    """Ids for subtitle sites when an anime from Otaku is playing (it gives Kodi no IMDb id)."""
+def otaku_metas():
+    """Lookups for subtitle sites when an anime from Otaku is playing (it gives Kodi no IMDb id)."""
     if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
-        return None
+        return []
     from resources.lib import otaku
     item = otaku.current()
     if not item:
-        return None
-    try:
-        meta = otaku.lookup(item)
-    except Exception as e:
-        c.log('otaku lookup failed: %s' % e, xbmc.LOGWARNING)
-        return None
-    if meta:
+        return []
+    metas = otaku.candidates(item)
+    for m in metas:
         c.log('otaku: mal %s episode %s -> %s%s' % (
-            item['mal_id'], item['episode'], meta['imdb_id'],
-            '' if meta['movie'] else ' S%02dE%02d' % (meta['season'], meta['episode'])))
-    return meta
+            item['mal_id'], item['episode'], m['imdb_id'] or '"%s"' % m.get('title'),
+            '' if m['movie'] else ' S%02dE%02d' % (m['season'], m['episode'])))
+    return metas
 
 
 def search():
     langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or ['English']
-    anime = otaku_meta()
+    anime = otaku_metas()
     if anime:
-        episode = None if anime['movie'] else (anime['season'], anime['episode'])
+        # any numbering one of the lookups uses is the right episode
+        episodes = {(m['season'], m['episode']) for m in anime if not m['movie']} or None
     else:
-        episode = playing_episode()
+        episodes = {playing_episode()} if playing_episode() else None
     results = []
     for addon_id, name in services():
         if anime and addon_id == 'service.subtitles.a4ksubtitles':
             from resources.lib import otaku
-            try:
-                found = otaku.a4k_search(anime, langs)
-            except Exception as e:
-                c.log('a4k search for anime failed: %s' % e, xbmc.LOGWARNING)
-                found = []
-            for f in found:
-                results.append({'label': '%s - %s' % (name, f['label']), 'file': f['file']})
-            c.log('%s (anime ids): %d results' % (addon_id, len(found)))
+            seen_files = set()
+            for meta in anime:
+                try:
+                    found = otaku.a4k_search(meta, langs)
+                except Exception as e:
+                    c.log('a4k search for anime failed: %s' % e, xbmc.LOGWARNING)
+                    found = []
+                new = [f for f in found if f['file'] not in seen_files]
+                seen_files.update(f['file'] for f in new)
+                for f in new:
+                    results.append({'label': '%s - %s' % (name, f['label']), 'file': f['file']})
+                c.log('%s (anime %s): %d results, %d new' % (
+                    addon_id, meta['imdb_id'] or meta.get('title'), len(found), len(new)))
             continue
         url = 'plugin://%s/?action=search&languages=%s&preferredlanguage=%s' % (
             addon_id, quote(','.join(langs)), quote(langs[0]))
@@ -77,10 +79,10 @@ def search():
             # Subtitle sites often return the other episodes of the season too: leave those out
             name_text = m.group(1) if m else label
             ep = EPISODE.search(name_text)
-            if episode and ep and (int(ep.group(1)), int(ep.group(2))) != episode:
+            if episodes and ep and (int(ep.group(1)), int(ep.group(2))) not in episodes:
                 continue
             se = None if ep else SEASON.search(name_text)
-            if episode and se and int(se.group(1)) != episode[0]:
+            if episodes and se and int(se.group(1)) not in {e[0] for e in episodes}:
                 continue  # season pack of another season
             kept += 1
             results.append({'label': '%s - %s' % (name, label), 'file': f['file']})
@@ -147,16 +149,21 @@ def cycle(p):
     n = len(st['results'])
     order = [(st['index'] + k) % n for k in range(1, n + 1)]
     mismatch = set(st.setdefault('mismatch', []))
+    # After "none fits" was shown, later presses show the non-fitting ones anyway
+    force = st.get('none_fit', False)
     chosen = path = prepared = None
-    fallback = None  # a subtitle whose timing did not fit, used if nothing better turns up
-    extra = 0
-    # First pass skips subtitles already shown in this video (e.g. the auto-downloaded one)
-    # and those whose timing did not fit the video
+    checked = 0
+    limit_hit = False
+    # First pass skips subtitles already shown in this video (e.g. the auto-downloaded one);
+    # subtitles whose timing did not fit the video are only tried when forced
     for skip_seen in (True, False):
         already = c.seen() if skip_seen else set()
         for i in order:
-            if i in failed or hashes.get(str(i)) in already or (skip_seen and i in mismatch):
+            if i in failed or hashes.get(str(i)) in already or (i in mismatch and not force):
                 continue
+            if checked >= 4 and not force:
+                limit_hit = True  # keep each press reasonably quick
+                break
             got = download(st['results'][i])
             raw = c.read_bytes(got) if got else b''
             if not raw:
@@ -167,22 +174,28 @@ def cycle(p):
             if hashes[str(i)] in already:
                 continue
             prep = c.prepare(got)
-            if c.NOTES and extra < 3:
+            if c.NOTES and not force:
                 # Timing does not fit this video (other episode or cut): try the next one
                 c.log('skipping %d/%d, timing does not fit the video' % (i + 1, n))
                 mismatch.add(i)
-                if fallback is None:
-                    fallback = (i, got, prep, list(c.LAST_TAGS), list(c.NOTES))
-                extra += 1
+                checked += 1
                 continue
             chosen, path, prepared = i, got, prep
             break
-        if chosen is not None:
+        if chosen is not None or limit_hit:
             break
-    if chosen is None and fallback:
-        chosen, path, prepared, c.LAST_TAGS[:], c.NOTES[:] = fallback
     st['failed'] = sorted(failed)
     st['mismatch'] = sorted(mismatch)
+    if chosen is None and limit_hit:
+        c.notify('%d checked, none fits this video yet. Press again to check more' % checked, 4000)
+        save_state(st)
+        return
+    if chosen is None and mismatch and not force:
+        st['none_fit'] = True
+        c.notify('No subtitle fits this video (%d other episodes/cuts). Press again to show them anyway'
+                 % len(mismatch), 5000)
+        save_state(st)
+        return
     if chosen is None:
         c.notify('Download failed (daily limit reached?)' if failed else 'No other subtitles')
     else:
