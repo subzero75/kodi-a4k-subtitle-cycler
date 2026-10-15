@@ -122,36 +122,48 @@ def format_srt(cues):
                    for n, (a, b, body) in enumerate(cues, 1))
 
 
-MAX_STACK_LINES = 4
+def stack_fast(cues, fast_ms, count=2, max_gap=1000):
+    """Fast dialogue, rolled up: when a line is followed by the next one within fast_ms,
+    it stays on screen above the new line instead of vanishing. A third fast line joins
+    under them, and so on; only the newest `count` lines are kept (oldest on top).
+    Everything leaves together when the newest line ends (its gap-fixed end).
 
-
-def stack_fast(cues, min_ms, max_lines=MAX_STACK_LINES):
-    """Fast dialogue: lines that follow each other quicker than min_ms are shown together,
-    as one block, from the first one's start until the last one's end (at least min_ms),
-    and disappear together. Nothing flashes in and out in between.
-
-    How many lines go together follows from the timing, up to max_lines text lines."""
-    if not cues or min_ms <= 0:
+    Each original line still starts and ends at its own time, so nothing flashes."""
+    if not cues or fast_ms <= 0 or count < 2:
         return cues
-    groups = []
-    for a, b, body in cues:
-        g = groups[-1] if groups else None
-        n = body.count('\n') + 1
-        # lines that start within min_ms of the block's first line join it, so a line is
-        # never shown more than min_ms before it is spoken
-        if g and a - g['start'] < min_ms and g['lines'] + n <= max_lines:
-            g['bodies'].append(body)
-            g['lines'] += n
-            g['end'] = max(g['end'], b)
-        else:
-            groups.append({'start': a, 'end': b, 'lines': n, 'bodies': [body]})
     out = []
-    for i, g in enumerate(groups):
-        end = max(g['end'], g['start'] + min_ms)
-        if i + 1 < len(groups):
-            end = min(end, groups[i + 1]['start'])  # never overlap the next block
-        out.append([g['start'], end, '\n'.join(g['bodies'])])
+    chain = []
+    for i, (a, b, body) in enumerate(cues):
+        if chain:
+            pa, pb, _ = cues[i - 1]
+            if a - pa < fast_ms and a - pb <= max_gap:
+                # the previous line stays until this one starts, no blink in between
+                out[-1][1] = max(out[-1][1], a)
+            else:
+                chain = []
+        chain.append(body)
+        out.append([a, b, '\n'.join(chain[-count:])])
     return out
+
+
+def stack_ass(cues, fast_ms, count=2, max_gap=1000):
+    """stack_fast for ASS lines (changed in place): a fast line stays until the line
+    count-1 places after it in the same fast run ends."""
+    runs, run = [], []
+    for i, q in enumerate(cues):
+        if run:
+            p = cues[i - 1]
+            if not (q[0] - p[0] < fast_ms and q[0] - p[1] <= max_gap):
+                runs.append(run)
+                run = []
+        run.append(q)
+    if run:
+        runs.append(run)
+    for run in runs:
+        ends = [q[1] for q in run]
+        for k, q in enumerate(run):
+            q[1] = max(ends[k:k + count])
+    return cues
 
 
 def gap_close(cues, max_gap, extend):
@@ -448,6 +460,13 @@ def stack_ms():
         return 0
 
 
+def stack_count():
+    try:
+        return max(2, addon().getSettingInt('stack_count'))
+    except Exception:
+        return 2
+
+
 def any_fix_on():
     return gapfix_on() or sync_on() or stack_ms() > 0
 
@@ -672,10 +691,9 @@ def _prepare_raw(raw, path):
         if cues:
             cues = _fix(cues, gap, sync)
             if stack:
-                before = len(cues)
-                cues = stack_fast(cues, stack)
+                cues = stack_fast(cues, stack, stack_count())
                 LAST_TAGS.append('stack')
-                log('fast lines kept %d ms (%d cues -> %d)' % (stack, before, len(cues)))
+                log('fast lines (next one within %d ms) stacked, up to %d' % (stack, stack_count()))
         if LAST_TAGS:
             # Plain UTF-8 without BOM and with CRLF line ends, like the files Kodi loads fine
             dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt', path)
@@ -693,10 +711,10 @@ def _prepare_raw(raw, path):
                 dialogue = ass_dialogue(lines, cues, fields)
                 _fix(cues, gap, sync, dialogue)
                 if stack:
-                    # libass stacks lines that are on screen at the same time by itself
-                    for q in cues:
-                        if dialogue is None or dialogue(q[2]):
-                            q[1] = max(q[1], q[0] + stack)
+                    # same roll-up for the dialogue lines; libass stacks lines that are on
+                    # screen at the same time by itself
+                    talk = [q for q in cues if dialogue is None or dialogue(q[2])]
+                    stack_ass(talk, stack, stack_count())
                     LAST_TAGS.append('stack')
             if LAST_TAGS or res:
                 ext = os.path.splitext(path)[1].lower()

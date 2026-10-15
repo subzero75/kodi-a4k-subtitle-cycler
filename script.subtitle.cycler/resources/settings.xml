@@ -55,6 +55,23 @@
             <popup>false</popup>
           </control>
         </setting>
+        <setting id="stack_count" type="integer" label="32018" help="32019">
+          <level>0</level>
+          <default>2</default>
+          <constraints>
+            <minimum>2</minimum>
+            <step>1</step>
+            <maximum>4</maximum>
+          </constraints>
+          <dependencies>
+            <dependency type="enable">
+              <condition setting="stack_ms" operator="!is">0</condition>
+            </dependency>
+          </dependencies>
+          <control type="slider" format="integer">
+            <popup>false</popup>
+          </control>
+        </setting>
       </group>
       <group id="2" label="32009">
         <setting id="otaku" type="boolean" label="32010" help="32011">

@@ -70,9 +70,17 @@ msgid "a4kSubtitles only downloads automatically when Kodi knows the IMDb id, wh
 msgstr "إضافة a4kSubtitles لا تنزّل تلقائياً إلا إذا عرف كودي رقم IMDb، وبعض المشغلات لا تمرره. عندها تُحمَّل بعد نحو 15 ثانية أول ترجمة تناسب الفيديو، إلا إذا كان فيه ترجمة بلغتك."
 
 msgctxt "#32016"
-msgid "Show fast lines together (ms)"
-msgstr "عرض الأسطر السريعة معاً (ملّي ثانية)"
+msgid "Stack fast lines: next line within (ms)"
+msgstr "رصّ الأسطر السريعة: إذا جاء السطر التالي خلال (ملّي ثانية)"
 
 msgctxt "#32017"
-msgid "When people talk fast, lines that start within this time of each other are shown together as one block and disappear together, so you have time to read (up to 4 text lines). 0 = off."
-msgstr "عند الكلام السريع تُعرض الأسطر التي تبدأ خلال هذه المدة من بعضها معاً ككتلة واحدة وتختفي معاً، فيكفي الوقت لقراءتها (حتى 4 أسطر). 0 = إيقاف."
+msgid "When the next line comes sooner than this, the current line stays on screen above it instead of vanishing; all leave together when the last fast line ends. 0 = off."
+msgstr "إذا جاء السطر التالي أسرع من هذه المدة يبقى السطر الحالي على الشاشة فوقه بدل أن يختفي، وتختفي كلها معاً عند انتهاء آخر سطر سريع. 0 = إيقاف."
+
+msgctxt "#32018"
+msgid "Number of stacked lines"
+msgstr "عدد الأسطر المرصوصة فوق بعض"
+
+msgctxt "#32019"
+msgid "How many lines can be on screen above each other. When there are more, the oldest leaves."
+msgstr "أقصى عدد من الأسطر يُعرض فوق بعضه. عند تجاوزه يختفي الأقدم."
