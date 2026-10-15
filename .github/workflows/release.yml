@@ -1,0 +1,53 @@
+# Builds the add-on zip from the release's tag, signs where it came from (build
+# provenance) and attaches it to the release. Nobody uploads the zip by hand, so the
+# zip in a release is always exactly the code of its tag.
+name: Build release zip
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to (re)build, e.g. v2.2.1
+        required: true
+
+permissions:
+  contents: write       # attach the zip to the release
+  id-token: write       # sign the build provenance
+  attestations: write   # store the attestation
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the version in addon.xml matches the tag
+        run: |
+          V="${TAG#v}"
+          grep -q "version=\"$V\" provider-name" script.subtitle.cycler/addon.xml || {
+            echo "::error::addon.xml version is not $V (tag $TAG)"; exit 1; }
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: Build the zip
+        run: |
+          ZIP="script.subtitle.cycler-$VERSION.zip"
+          git archive --format=zip -o "$ZIP" HEAD script.subtitle.cycler
+          sha256sum "$ZIP" > "$ZIP.sha256"
+          cat "$ZIP.sha256"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Sign where the zip came from
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ env.ZIP }}
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$ZIP" "$ZIP.sha256" --clobber

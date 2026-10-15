@@ -17,6 +17,16 @@ Tested on Kodi 22 Beta 2 / CoreELEC (Ugoos AM9 Pro). Sync has also been reported
 2. In Kodi: **Add-ons → Install from zip file** and pick the zip (enable *Unknown sources* first if Kodi asks).
 3. Optional: **Add-ons → My add-ons → Program add-ons → Subtitle Cycler → Configure** and turn on *Close gaps between subtitle lines*.
 
+### Checking a download
+
+The zip in each release is built by GitHub from the release's tag (see `.github/workflows/release.yml`), not uploaded by hand, and GitHub signs where it came from. To check a zip you downloaded:
+
+```
+gh attestation verify script.subtitle.cycler-x.y.z.zip -R subzero75/kodi-subtitle-cycler
+```
+
+It only passes for a zip that GitHub built from this repository's code. Each release also has a `.sha256` file with the zip's checksum.
+
 ## Map a remote button
 
 Copy `keymaps/subtitlecycler.xml` to `special://profile/keymaps/` (e.g. `/storage/.kodi/userdata/keymaps/` on CoreELEC/LibreELEC), replace `61634` with your button id, then run `kodi-send --action="ReloadKeymaps"` or restart Kodi.
