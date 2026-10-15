@@ -131,12 +131,28 @@ def _dim(body):
                      for line in body.split('\n'))
 
 
+def _rtl(text):
+    """True when the first letter of the text is from a right-to-left script (Arabic, Hebrew,
+    Persian, Urdu...)."""
+    import unicodedata
+    for ch in re.sub(r'<[^>]+>|\{[^}]*\}', '', text):
+        kind = unicodedata.bidirectional(ch)
+        if kind in ('R', 'AL'):
+            return True
+        if kind == 'L':
+            return False
+    return False
+
+
 def _dash(body):
-    """'- ' before a stacked line (unless it already starts with a dash)."""
+    """'- ' at the start of a stacked line (unless it already starts with a dash).
+
+    A dash is neutral for text direction, so in Arabic or Hebrew Kodi would draw it at the
+    left, the end of the sentence. A right-to-left mark in front keeps it on the right."""
     lines = body.split('\n')
     first = re.sub(r'^(\s*(?:<[^>]+>|\{[^}]*\})*)', '', lines[0])
     if not first.lstrip().startswith(('-', '\u2013', '\u2014')):
-        lines[0] = '- ' + lines[0]
+        lines[0] = ('\u200f- ' if _rtl(body) else '- ') + lines[0]
     return '\n'.join(lines)
 
 
