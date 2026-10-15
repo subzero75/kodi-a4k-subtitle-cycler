@@ -92,3 +92,11 @@ msgstr ""
 msgctxt "#32021"
 msgid "When people talk fast, a line stays on screen above the next one instead of vanishing, so there is time to read it."
 msgstr ""
+
+msgctxt "#32022"
+msgid "Older stacked lines in grey"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Older stacked lines are shown in grey and the newest one in its normal colour, so the new line stands out at a glance."
+msgstr ""

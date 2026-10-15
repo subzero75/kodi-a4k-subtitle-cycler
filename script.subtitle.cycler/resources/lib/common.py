@@ -122,7 +122,16 @@ def format_srt(cues):
                    for n, (a, b, body) in enumerate(cues, 1))
 
 
-def stack_fast(cues, fast_ms, count=2, max_gap=1000):
+OLD_LINE_COLOR = '#9A9A9A'
+
+
+def _dim(body):
+    """An older stacked line in grey, so the newest line stands out."""
+    return '\n'.join('<font color="%s">%s</font>' % (OLD_LINE_COLOR, line) if line.strip() else line
+                     for line in body.split('\n'))
+
+
+def stack_fast(cues, fast_ms, count=2, max_gap=1000, dim=True):
     """Fast dialogue, rolled up: when a line is followed by the next one within fast_ms,
     it stays on screen above the new line instead of vanishing. A third fast line joins
     under them, and so on; only the newest `count` lines are kept (oldest on top).
@@ -142,7 +151,10 @@ def stack_fast(cues, fast_ms, count=2, max_gap=1000):
             else:
                 chain = []
         chain.append(body)
-        out.append([a, b, '\n'.join(chain[-count:])])
+        shown = chain[-count:]
+        if dim:
+            shown = [_dim(t) for t in shown[:-1]] + shown[-1:]
+        out.append([a, b, '\n'.join(shown)])
     return out
 
 
@@ -693,7 +705,7 @@ def _prepare_raw(raw, path):
         if cues:
             cues = _fix(cues, gap, sync)
             if stack:
-                cues = stack_fast(cues, stack, stack_count())
+                cues = stack_fast(cues, stack, stack_count(), dim=setting_on('stack_dim'))
                 LAST_TAGS.append('stack')
                 log('fast lines (next one within %d ms) stacked, up to %d' % (stack, stack_count()))
         if LAST_TAGS:

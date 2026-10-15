@@ -92,3 +92,11 @@ msgstr "رصّ الأسطر السريعة فوق بعض"
 msgctxt "#32021"
 msgid "When people talk fast, a line stays on screen above the next one instead of vanishing, so there is time to read it."
 msgstr "عند الكلام السريع يبقى السطر على الشاشة فوق السطر التالي بدل أن يختفي، فيكفي الوقت لقراءته."
+
+msgctxt "#32022"
+msgid "Older stacked lines in grey"
+msgstr "الأسطر الأقدم باللون الرمادي"
+
+msgctxt "#32023"
+msgid "Older stacked lines are shown in grey and the newest one in its normal colour, so the new line stands out at a glance."
+msgstr "الأسطر المرصوصة الأقدم تظهر بلون رمادي، والسطر الأحدث بلونه العادي، فتميّز الجديد بنظرة."
