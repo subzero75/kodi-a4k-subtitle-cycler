@@ -122,6 +122,41 @@ def format_srt(cues):
                    for n, (a, b, body) in enumerate(cues, 1))
 
 
+MAX_STACK_LINES = 4
+
+
+def stack_fast(cues, min_ms, max_lines=MAX_STACK_LINES):
+    """Fast dialogue: keep each line on screen at least min_ms; when the next line comes
+    sooner, show both, the older one on top. Returns new non-overlapping SRT cues.
+
+    How many lines are stacked follows from the timing: a line stays until it has been
+    shown min_ms, so with lines every 0.5 s and min_ms 2000 up to four are visible."""
+    if not cues or min_ms <= 0:
+        return cues
+    shown = [[a, max(b, a + min_ms), body] for a, b, body in cues]
+    points = sorted({t for a, b, _ in shown for t in (a, b)})
+    out = []
+    for a, b in zip(points, points[1:]):
+        active = [q for q in shown if q[0] <= a and q[1] >= b]
+        if not active:
+            continue
+        # newest first, then as many older ones as fit, shown oldest on top
+        active.sort(key=lambda q: q[0], reverse=True)
+        keep, lines = [], 0
+        for q in active:
+            n = q[2].count('\n') + 1
+            if keep and lines + n > max_lines:
+                break
+            keep.append(q)
+            lines += n
+        body = '\n'.join(q[2] for q in reversed(keep))
+        if out and out[-1][2] == body and out[-1][1] == a:
+            out[-1][1] = b  # same text continues
+        else:
+            out.append([a, b, body])
+    return out
+
+
 def gap_close(cues, max_gap, extend):
     """Close short gaps between lines and keep lines a little longer over long gaps."""
     for cur, nxt in zip(cues, cues[1:]):
@@ -409,6 +444,17 @@ def sync_cues(cues):
     return subsync.apply(cues, a, b), tag
 
 
+def stack_ms():
+    try:
+        return addon().getSettingInt('stack_ms')
+    except Exception:
+        return 0
+
+
+def any_fix_on():
+    return gapfix_on() or sync_on() or stack_ms() > 0
+
+
 def gapfix_on():
     return addon().getSettingBool('gapfix')
 
@@ -581,11 +627,16 @@ def _prepare_raw(raw, path):
     if not raw.strip() or ('\x00' in text and not _utf16(raw)):
         return unusable('not a subtitle file', path)
     is_srt = bool(TS.search(text))
-    gap, sync = gapfix_on(), sync_on()
-    if is_srt and (gap or sync):
+    gap, sync, stack = gapfix_on(), sync_on(), stack_ms()
+    if is_srt and (gap or sync or stack):
         cues = parse_srt(decode(raw))
         if cues:
             cues = _fix(cues, gap, sync)
+            if stack:
+                before = len(cues)
+                cues = stack_fast(cues, stack)
+                LAST_TAGS.append('stack')
+                log('fast lines kept %d ms (%d cues -> %d)' % (stack, before, len(cues)))
         if LAST_TAGS:
             # Plain UTF-8 without BOM and with CRLF line ends, like the files Kodi loads fine
             dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt')
@@ -599,8 +650,15 @@ def _prepare_raw(raw, path):
             # line indexes of the cues moved by the inserted lines (all above the events)
             cues = [[a, b, i + len(lines) - before] for a, b, i in cues]
         if cues or res:
-            if cues and (gap or sync):
-                _fix(cues, gap, sync, ass_dialogue(lines, cues, fields))
+            if cues and (gap or sync or stack):
+                dialogue = ass_dialogue(lines, cues, fields)
+                _fix(cues, gap, sync, dialogue)
+                if stack:
+                    # libass stacks lines that are on screen at the same time by itself
+                    for q in cues:
+                        if dialogue is None or dialogue(q[2]):
+                            q[1] = max(q[1], q[0] + stack)
+                    LAST_TAGS.append('stack')
             if LAST_TAGS or res:
                 ext = os.path.splitext(path)[1].lower()
                 dst = _write_unique(format_ass(lines, cues, fields).encode('utf-8'),

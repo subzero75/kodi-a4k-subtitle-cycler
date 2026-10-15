@@ -76,7 +76,7 @@ def skip(player, path, m, why):
 
 
 def check(player):
-    gapfix = c.gapfix_on() or c.sync_on()
+    gapfix = c.any_fix_on()
     now = time.time()
     busy = c.busy_window()
     if busy and (busy[0] < player.start - 60 or (busy[1] == 0 and now - busy[0] > 90)):

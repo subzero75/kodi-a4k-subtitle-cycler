@@ -68,3 +68,11 @@ msgstr ""
 msgctxt "#32015"
 msgid "a4kSubtitles only downloads automatically when Kodi knows the IMDb id, which some players do not pass on. Then, about 15 seconds after the start, the first subtitle that fits the video is loaded, unless the video already has a subtitle in your language."
 msgstr ""
+
+msgctxt "#32016"
+msgid "Keep fast lines on screen at least (ms)"
+msgstr ""
+
+msgctxt "#32017"
+msgid "When people talk fast, a line stays until it has been shown this long and the next lines appear under it, so several lines are on screen together (up to 4 text lines). 0 = off."
+msgstr ""
