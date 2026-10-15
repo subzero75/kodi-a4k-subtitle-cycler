@@ -5,7 +5,9 @@ A Kodi add-on with four independent features:
 1. **One-button subtitle cycling** – press a remote button during playback to download and load the next subtitle result from **all enabled subtitle add-ons** (a4kSubtitles, OpenSubtitles, Subdl, …). A notification shows `index/total  source - language`.
 2. **No gaps between subtitle lines** (optional) – a background service closes short gaps between lines of every external SRT subtitle, however it was loaded: auto-downloaded at start, picked from Kodi's subtitle window, or loaded with the button. The text no longer blinks between lines.
 3. **Sync to the embedded subtitles** (optional, **experimental**) – when the video is an MKV with a text subtitle track (in any language), external SRT subtitles are shifted, and stretched for 23.976/24/25 fps mix-ups, so their timing matches that track. Handy when the only well-timed track is in another language than the one you want.
-4. **Subtitles for anime from [Otaku](https://github.com/Goldenfreddy0703/Otaku)** (optional, **experimental**) – Otaku gives Kodi no IMDb id, so a4kSubtitles finds nothing for its anime. The add-on takes the ids from Otaku's own database, searches a4kSubtitles with them and with the show's title, and loads the first subtitle that fits the episode. Tested only with *Bleach: Thousand-Year Blood War* so far.
+4. **Subtitles for videos Kodi has no IMDb id for** (optional, **experimental**) – a4kSubtitles only searches, and only auto-downloads, when Kodi knows the video's IMDb id. Some players do not pass it on, and `.strm` files or links played from a file list have none. The add-on then finds the id itself and loads the first subtitle that fits:
+   - **Anime from [Otaku](https://github.com/Goldenfreddy0703/Otaku):** ids from Otaku's own database, plus a search by the show's title. Tested only with *Bleach: Thousand-Year Blood War* so far.
+   - **Other videos:** the show name, season and episode from the file name (`Lost S01E25 ...`), and the IMDb id from IMDb's search.
 
 Tested on Kodi 22 Beta 2 / CoreELEC (Ugoos AM9 Pro). Sync has also been reported working on Kodi 21.2 (Google TV Streamer) by a user.
 
@@ -50,6 +52,7 @@ Running the add-on from the Programs menu (with no video playing) opens its sett
 - When Kodi knows nothing about the video (no IMDb id, e.g. a `.strm` file), the show name, season and episode are taken from the file name (`Lost S01E25 ...`) and a4kSubtitles searches by title.
 - Zip files from subtitle sites are opened and the subtitle for the playing episode is taken out; files that are not subtitles (a text note, a web page, a rar archive) are skipped and never shown.
 - ASS subtitles without `PlayResX`/`PlayResY` get the canvas size their fonts and margins were made for. Without it Kodi assumes 384x288, and such files show one word per line.
+- Subtitles loaded by the add-on keep their real name, language and site in Kodi's subtitle list (e.g. `Arabic - Lost - s01e22 - Born to Run - OpenSubtitles`).
 - An auto-downloaded subtitle shows as-is for about a second before it is replaced by the gap-free copy.
 
 ## How it works
