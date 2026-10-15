@@ -70,11 +70,11 @@ msgid "a4kSubtitles only downloads automatically when Kodi knows the IMDb id, wh
 msgstr ""
 
 msgctxt "#32016"
-msgid "Stack fast lines: next line within (ms)"
+msgid "Fast when the next line comes within (ms)"
 msgstr ""
 
 msgctxt "#32017"
-msgid "When the next line comes sooner than this, the current line stays on screen above it instead of vanishing; all leave together when the last fast line ends. 0 = off."
+msgid "When the next line comes sooner than this, the current line stays on screen above it instead of vanishing; all leave together when the last fast line ends."
 msgstr ""
 
 msgctxt "#32018"
@@ -83,4 +83,12 @@ msgstr ""
 
 msgctxt "#32019"
 msgid "How many lines can be on screen above each other. When there are more, the oldest leaves."
+msgstr ""
+
+msgctxt "#32020"
+msgid "Stack fast lines"
+msgstr ""
+
+msgctxt "#32021"
+msgid "When people talk fast, a line stays on screen above the next one instead of vanishing, so there is time to read it."
 msgstr ""

@@ -43,14 +43,22 @@
           <default>false</default>
           <control type="toggle"/>
         </setting>
+        <setting id="stack" type="boolean" label="32020" help="32021">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
         <setting id="stack_ms" type="integer" label="32016" help="32017">
           <level>0</level>
-          <default>0</default>
+          <default>1500</default>
           <constraints>
-            <minimum>0</minimum>
+            <minimum>250</minimum>
             <step>250</step>
             <maximum>4000</maximum>
           </constraints>
+          <dependencies>
+            <dependency type="enable" setting="stack">true</dependency>
+          </dependencies>
           <control type="slider" format="integer">
             <popup>false</popup>
           </control>
@@ -64,9 +72,7 @@
             <maximum>4</maximum>
           </constraints>
           <dependencies>
-            <dependency type="enable">
-              <condition setting="stack_ms" operator="!is">0</condition>
-            </dependency>
+            <dependency type="enable" setting="stack">true</dependency>
           </dependencies>
           <control type="slider" format="integer">
             <popup>false</popup>

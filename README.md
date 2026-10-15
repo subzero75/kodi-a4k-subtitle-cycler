@@ -34,7 +34,8 @@ Running the add-on from the Programs menu (with no video playing) opens its sett
 | Close gaps up to (ms) | 1500 | Gaps this short or shorter are closed: a line stays until the next one starts |
 | Keep line longer on long gaps (ms) | 2000 | Longer gaps: the line stays this much longer, then the pause stays empty. 0 = off |
 | Sync timing to the video's embedded subtitles | Off | Experimental. Shift external SRTs to match the MKV's text subtitle track. The notification shows `+sync -2.4s` when the timing was changed, `+in sync` when it already matched, and *timing differs from the video* when the subtitle belongs to another episode or cut. Turn it off for the quickest cycling |
-| Stack fast lines: next line within (ms) | 0 (off) | Fast dialogue, rolled up: when the next line comes sooner than this, the current line stays on screen above it instead of vanishing, and all leave together when the last fast line ends (its gap-fixed end). Each line still appears at its own time |
+| Stack fast lines | Off | Turns the stacking below on or off |
+| Fast when the next line comes within (ms) | 1500 | Fast dialogue, rolled up: when the next line comes sooner than this, the current line stays on screen above it instead of vanishing, and all leave together when the last fast line ends (its gap-fixed end). Each line still appears at its own time |
 | Number of stacked lines | 2 | How many lines can be on screen above each other (2-4); with more, the oldest leaves. On ASS subtitles Kodi itself decides the order of stacked dialogue lines |
 | Find subtitles for anime played from Otaku | On | Experimental. a4kSubtitles search with the ids from Otaku's database. Only does something while an Otaku episode plays |
 | Load a subtitle automatically when an Otaku episode starts | On | About 15 seconds after the episode starts, the first subtitle that fits the video is loaded |

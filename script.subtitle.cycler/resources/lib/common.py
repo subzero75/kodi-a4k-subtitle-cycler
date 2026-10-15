@@ -454,8 +454,10 @@ def sync_cues(cues):
 
 
 def stack_ms():
+    """How soon the next line must come to stack fast lines; 0 when the feature is off."""
     try:
-        return addon().getSettingInt('stack_ms')
+        a = addon()
+        return a.getSettingInt('stack_ms') if a.getSettingBool('stack') else 0
     except Exception:
         return 0
 
