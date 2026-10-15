@@ -489,19 +489,61 @@ def busy_window():
         return None
 
 
-def _write_unique(data, ext):
+BAD_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
+
+
+def _language_token(token):
+    """'ara' / 'ar' / 'arabic' -> the token itself when it names a language, else None."""
+    t = token.strip().lower()
+    if not t.isalpha() or len(t) < 2:
+        return None
+    for fmt in (xbmc.ISO_639_1, xbmc.ISO_639_2):
+        try:
+            if xbmc.convertLanguage(t, fmt):
+                return t
+        except Exception:
+            pass
+    return None
+
+
+def display_name(src):
+    """(name, language) for the copy of src, so Kodi's subtitle list shows e.g.
+    'Arabic - Lost - s01e22 - Born to Run' instead of a random file name."""
+    base = os.path.basename(src or '')
+    stem = base
+    while True:
+        root, ext = os.path.splitext(stem)
+        if ext.lower() in SUB_EXTS or ext.lower() in ('.zip',):
+            stem = root
+        else:
+            break
+    lang = None
+    parts = stem.split('.')
+    if len(parts) > 1 and _language_token(parts[-1]):
+        lang = parts[-1].lower()
+        parts = parts[:-1]
+    # Kodi splits the file name at dots (language, "forced", ...): keep them out of the name
+    name = BAD_NAME_CHARS.sub(' ', ' '.join(parts)).strip()
+    name = re.sub(r'\s+', ' ', name)[:80].strip() or 'cycler'
+    return name, lang
+
+
+def _write_unique(data, ext, src=None):
     # Keep the few newest copies: Kodi may still be opening one of them. Kodi itself deletes
     # them all when playback stops.
     os.makedirs(OUT_DIR, exist_ok=True)
-    old = sorted((os.path.join(OUT_DIR, n) for n in os.listdir(OUT_DIR) if n.startswith(OUT_PREFIX)),
+    old = sorted((os.path.join(OUT_DIR, n) for n in os.listdir(OUT_DIR)),
                  key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0)
     for name in old[:-5]:
         try:
             os.remove(name)
         except OSError:
             pass
-    # Kodi reuses an already loaded subtitle with the same path, so every file gets a new name
-    dst = os.path.join(OUT_DIR, '%s%s%s' % (OUT_PREFIX, uuid.uuid4().hex[:12], ext))
+    # Kodi reuses an already loaded subtitle with the same path, so every file gets a new name;
+    # the short code keeps names unique without hiding the real name in Kodi's list
+    name, lang = display_name(src)
+    code = uuid.uuid4().hex[:4]
+    dst = os.path.join(OUT_DIR, '%s [%s]%s%s' % (name, code, '.' + lang if lang else '', ext))
     with open(dst, 'wb') as fh:
         fh.write(data)
     return dst
@@ -510,7 +552,7 @@ def _write_unique(data, ext):
 def copy_original(path):
     raw = read_bytes(path)
     is_srt = bool(TS.search(decode(raw[:4096]) or ''))
-    return _write_unique(raw, '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt'))
+    return _write_unique(raw, '.srt' if is_srt else (os.path.splitext(path)[1] or '.srt'), path)
 
 
 def _log_size():
@@ -639,7 +681,7 @@ def _prepare_raw(raw, path):
                 log('fast lines kept %d ms (%d cues -> %d)' % (stack, before, len(cues)))
         if LAST_TAGS:
             # Plain UTF-8 without BOM and with CRLF line ends, like the files Kodi loads fine
-            dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt')
+            dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt', path)
             log('%s: %s -> %s' % (', '.join(LAST_TAGS), path, dst))
             return dst, True
     elif not is_srt and is_ass(decode(raw) or ''):
@@ -662,7 +704,7 @@ def _prepare_raw(raw, path):
             if LAST_TAGS or res:
                 ext = os.path.splitext(path)[1].lower()
                 dst = _write_unique(format_ass(lines, cues, fields).encode('utf-8'),
-                                    ext if ext in ('.ass', '.ssa') else '.ass')
+                                    ext if ext in ('.ass', '.ssa') else '.ass', path)
                 log('%s: %s -> %s' % (', '.join(LAST_TAGS), path, dst))
                 return dst, True
     ext = os.path.splitext(path)[1].lower()
@@ -671,7 +713,7 @@ def _prepare_raw(raw, path):
         log('format not recognised; first bytes: %r' % raw[:48])
         return unusable('not a subtitle file', path)
     ext = '.srt' if is_srt else (ext if ext in SUB_EXTS else '.srt')
-    dst = _write_unique(raw, ext)
+    dst = _write_unique(raw, ext, path)
     log('copied: %s -> %s' % (path, dst))
     if (gap or sync) and not is_srt:
         log('not changed, format not recognised; first bytes: %r' % raw[:48])
