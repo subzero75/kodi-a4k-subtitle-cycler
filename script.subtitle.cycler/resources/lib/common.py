@@ -259,6 +259,37 @@ def kodi_overrides_ass_styles():
         return False
 
 
+POSITIONED = re.compile(r'\\(?:pos|move)\(|\\an\d|\\[kK][fo]?\d')
+
+
+def ass_dialogue(lines, cues, fields):
+    """Which lines are ordinary dialogue: the most used style, not placed or karaoke-timed.
+
+    Only those get the gap fix. Songs (lyrics and their translation shown together), signs and
+    other typesetting have their own timing; keeping them longer stacks them on screen."""
+    try:
+        si, ti = fields.index('style'), fields.index('text')
+    except ValueError:
+        return None
+    style = {}
+    for _, _, i in cues:
+        parts = lines[i].split(':', 1)[1].split(',', len(fields) - 1)
+        if len(parts) > ti:
+            style[i] = (parts[si].strip().lower(), bool(POSITIONED.search(parts[ti])))
+    counts = {}
+    for name, placed in style.values():
+        if not placed:
+            counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        return None
+    total = sum(counts.values())
+    # the dialogue styles: the most used one, and any other carrying a good share of the lines
+    main = {n for n, k in counts.items() if k >= max(counts.values()) * 0.3 or k >= total * 0.2}
+    log('ASS gap fix only for styles %s (%d of %d lines)' % (
+        sorted(main), sum(counts[n] for n in main), len(cues)))
+    return lambda i: i in style and style[i][0] in main and not style[i][1]
+
+
 def format_ass(lines, cues, fields):
     """Write the new times back into the Dialogue lines; lines of dropped cues are removed."""
     keep = {}
@@ -476,8 +507,9 @@ LAST_TAGS = []
 NOTES = []
 
 
-def _fix(cues, gap, sync):
-    """Sync and/or close gaps in place (cues: [start, end, payload]); returns the cues."""
+def _fix(cues, gap, sync, only=None):
+    """Sync and/or close gaps in place (cues: [start, end, payload]); returns the cues.
+    only(payload): which cues get the gap fix (default all)."""
     if sync:
         new, tag = sync_cues(cues)
         cues[:] = new
@@ -487,7 +519,8 @@ def _fix(cues, gap, sync):
             LAST_TAGS.append(tag)
     if gap:
         a = addon()
-        gap_close(cues, a.getSettingInt('max_gap'), a.getSettingInt('extend'))
+        gap_close([q for q in cues if only is None or only(q[2])],
+                  a.getSettingInt('max_gap'), a.getSettingInt('extend'))
         LAST_TAGS.append('gapfix')
     return cues
 
@@ -567,7 +600,7 @@ def _prepare_raw(raw, path):
             cues = [[a, b, i + len(lines) - before] for a, b, i in cues]
         if cues or res:
             if cues and (gap or sync):
-                _fix(cues, gap, sync)
+                _fix(cues, gap, sync, ass_dialogue(lines, cues, fields))
             if LAST_TAGS or res:
                 ext = os.path.splitext(path)[1].lower()
                 dst = _write_unique(format_ass(lines, cues, fields).encode('utf-8'),
