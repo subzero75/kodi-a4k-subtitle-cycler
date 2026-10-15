@@ -131,7 +131,16 @@ def _dim(body):
                      for line in body.split('\n'))
 
 
-def stack_fast(cues, fast_ms, count=2, max_gap=1000, dim=True):
+def _dash(body):
+    """'- ' before a stacked line (unless it already starts with a dash)."""
+    lines = body.split('\n')
+    first = re.sub(r'^(\s*(?:<[^>]+>|\{[^}]*\})*)', '', lines[0])
+    if not first.lstrip().startswith(('-', '\u2013', '\u2014')):
+        lines[0] = '- ' + lines[0]
+    return '\n'.join(lines)
+
+
+def stack_fast(cues, fast_ms, count=2, max_gap=1000, dim=False, dash=True):
     """Fast dialogue, rolled up: when a line is followed by the next one within fast_ms,
     it stays on screen above the new line instead of vanishing. A third fast line joins
     under them, and so on; only the newest `count` lines are kept (oldest on top).
@@ -152,8 +161,11 @@ def stack_fast(cues, fast_ms, count=2, max_gap=1000, dim=True):
                 chain = []
         chain.append(body)
         shown = chain[-count:]
-        if dim:
-            shown = [_dim(t) for t in shown[:-1]] + shown[-1:]
+        if len(shown) > 1:
+            if dash:
+                shown = [_dash(t) for t in shown]
+            if dim:
+                shown = [_dim(t) for t in shown[:-1]] + shown[-1:]
         out.append([a, b, '\n'.join(shown)])
     return out
 
@@ -705,7 +717,8 @@ def _prepare_raw(raw, path):
         if cues:
             cues = _fix(cues, gap, sync)
             if stack:
-                cues = stack_fast(cues, stack, stack_count(), dim=setting_on('stack_dim'))
+                cues = stack_fast(cues, stack, stack_count(), dim=setting_on('stack_dim', False),
+                                   dash=setting_on('stack_dash'))
                 LAST_TAGS.append('stack')
                 log('fast lines (next one within %d ms) stacked, up to %d' % (stack, stack_count()))
         if LAST_TAGS:

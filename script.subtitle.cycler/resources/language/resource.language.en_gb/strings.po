@@ -100,3 +100,11 @@ msgstr ""
 msgctxt "#32023"
 msgid "Older stacked lines are shown in grey and the newest one in its normal colour, so the new line stands out at a glance."
 msgstr ""
+
+msgctxt "#32024"
+msgid "Dash before each stacked line"
+msgstr ""
+
+msgctxt "#32025"
+msgid "When lines are stacked, each starts with a dash, so you can tell where one line ends and the next begins."
+msgstr ""

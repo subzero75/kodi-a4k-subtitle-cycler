@@ -63,9 +63,17 @@
             <popup>false</popup>
           </control>
         </setting>
-        <setting id="stack_dim" type="boolean" label="32022" help="32023">
+        <setting id="stack_dash" type="boolean" label="32024" help="32025">
           <level>0</level>
           <default>true</default>
+          <dependencies>
+            <dependency type="enable" setting="stack">true</dependency>
+          </dependencies>
+          <control type="toggle"/>
+        </setting>
+        <setting id="stack_dim" type="boolean" label="32022" help="32023">
+          <level>0</level>
+          <default>false</default>
           <dependencies>
             <dependency type="enable" setting="stack">true</dependency>
           </dependencies>
