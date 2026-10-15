@@ -177,11 +177,11 @@ def stack_fast(cues, fast_ms, count=2, max_gap=1000, dim=False, dash=True):
                 chain = []
         chain.append(body)
         shown = chain[-count:]
-        if len(shown) > 1:
-            if dash:
-                shown = [_dash(t) for t in shown]
-            if dim:
-                shown = [_dim(t) for t in shown[:-1]] + shown[-1:]
+        if dash:
+            # every line, stacked or not, so a line looks the same when the next one joins it
+            shown = [_dash(t) for t in shown]
+        if dim and len(shown) > 1:
+            shown = [_dim(t) for t in shown[:-1]] + shown[-1:]
         out.append([a, b, '\n'.join(shown)])
     return out
 

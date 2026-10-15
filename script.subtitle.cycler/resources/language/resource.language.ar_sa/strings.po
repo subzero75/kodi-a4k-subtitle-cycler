@@ -102,9 +102,9 @@ msgid "Older stacked lines are shown in grey and the newest one in its normal co
 msgstr "الأسطر المرصوصة الأقدم تظهر بلون رمادي، والسطر الأحدث بلونه العادي، فتميّز الجديد بنظرة."
 
 msgctxt "#32024"
-msgid "Dash before each stacked line"
-msgstr "شَرطة \"-\" قبل كل سطر مرصوص"
+msgid "Dash before each line"
+msgstr "شَرطة \"-\" قبل كل سطر"
 
 msgctxt "#32025"
-msgid "When lines are stacked, each starts with a dash, so you can tell where one line ends and the next begins."
-msgstr "عند رصّ الأسطر يبدأ كل سطر بشَرطة، فتعرف أين ينتهي سطر ويبدأ التالي."
+msgid "Every subtitle line starts with a dash, so when lines are stacked you can tell where one ends and the next begins."
+msgstr "كل سطر ترجمة يبدأ بشَرطة، فعند رصّ الأسطر تعرف أين ينتهي سطر ويبدأ التالي."

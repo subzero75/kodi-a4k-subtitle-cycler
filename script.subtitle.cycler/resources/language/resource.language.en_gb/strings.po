@@ -102,9 +102,9 @@ msgid "Older stacked lines are shown in grey and the newest one in its normal co
 msgstr ""
 
 msgctxt "#32024"
-msgid "Dash before each stacked line"
+msgid "Dash before each line"
 msgstr ""
 
 msgctxt "#32025"
-msgid "When lines are stacked, each starts with a dash, so you can tell where one line ends and the next begins."
+msgid "Every subtitle line starts with a dash, so when lines are stacked you can tell where one ends and the next begins."
 msgstr ""
