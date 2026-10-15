@@ -171,3 +171,33 @@ def a4k_search(meta, langs):
             A4K, r['service_name'], quote_plus(json.dumps(r['action_args'])))
         out.append({'label': '%s %s' % (r.get('lang') or '', r.get('name') or ''), 'file': url})
     return out
+
+
+def imdb_from_title(title, year=None, movie=False):
+    """IMDb id for a show (or movie) title, from IMDb's own search suggestions (the same
+    service a4kSubtitles uses, which it only does when Kodi also knows the year).
+    With several matches the best known one wins, e.g. "Lost" -> the 2004 series."""
+    from urllib.request import Request, urlopen
+    query = re.sub(r'\s+', '_', title.strip().lower())[:20]
+    if not query:
+        return ''
+    url = 'https://v2.sg.media-imdb.com/suggestion/%s/%s.json' % (quote_plus(query[0]), quote_plus(query))
+    try:
+        with urlopen(Request(url, headers={'User-Agent': 'Mozilla/5.0'}), timeout=10) as r:
+            found = json.loads(r.read().decode('utf-8')).get('d') or []
+    except Exception as e:
+        c.log('IMDb lookup for "%s" failed: %s' % (title, e), xbmc.LOGWARNING)
+        return ''
+    kinds = ('feature', 'TV movie') if movie else ('TV series', 'TV mini-series')
+    want = re.sub(r'[^a-z0-9]+', ' ', title.lower()).strip()
+    hits = [d for d in found if d.get('q') in kinds and d.get('id', '').startswith('tt')
+            and re.sub(r'[^a-z0-9]+', ' ', (d.get('l') or '').lower()).strip() == want]
+    if year:
+        dated = [d for d in hits if d.get('y') == int(year)]
+        hits = dated or hits
+    if not hits:
+        c.log('IMDb lookup: no %s called "%s"' % ('movie' if movie else 'series', title))
+        return ''
+    best = min(hits, key=lambda d: d.get('rank') or 10 ** 9)
+    c.log('IMDb lookup: "%s" -> %s (%s %s)' % (title, best['id'], best.get('l'), best.get('y')))
+    return best['id']

@@ -72,8 +72,11 @@ def name_metas():
         m = NAME_SXXEYY.search(name)
         if m and m.group(1).strip(' ._-'):
             show = re.sub(r'^\[[^\]]*\]\s*', '', re.sub(r'[._]+', ' ', m.group(1))).strip(' -')
+            y = NAME_YEAR.search(show)
+            year = y.group(2) if y else None
             show = NAME_YEAR.sub(r'\1', show).strip(' -(') or show
-            meta = {'imdb_id': '', 'movie': False, 'title': show, 'tvshow': show,
+            from resources.lib import otaku
+            meta = {'imdb_id': otaku.imdb_from_title(show, year), 'movie': False, 'title': show, 'tvshow': show,
                     'season': int(m.group(2)), 'episode': int(m.group(3))}
             c.log('no IMDb id: "%s" -> "%s" S%02dE%02d' % (name, show, meta['season'], meta['episode']))
             return [meta]
