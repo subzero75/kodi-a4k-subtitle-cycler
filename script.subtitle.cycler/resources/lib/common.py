@@ -126,34 +126,31 @@ MAX_STACK_LINES = 4
 
 
 def stack_fast(cues, min_ms, max_lines=MAX_STACK_LINES):
-    """Fast dialogue: keep each line on screen at least min_ms; when the next line comes
-    sooner, show both, the older one on top. Returns new non-overlapping SRT cues.
+    """Fast dialogue: lines that follow each other quicker than min_ms are shown together,
+    as one block, from the first one's start until the last one's end (at least min_ms),
+    and disappear together. Nothing flashes in and out in between.
 
-    How many lines are stacked follows from the timing: a line stays until it has been
-    shown min_ms, so with lines every 0.5 s and min_ms 2000 up to four are visible."""
+    How many lines go together follows from the timing, up to max_lines text lines."""
     if not cues or min_ms <= 0:
         return cues
-    shown = [[a, max(b, a + min_ms), body] for a, b, body in cues]
-    points = sorted({t for a, b, _ in shown for t in (a, b)})
-    out = []
-    for a, b in zip(points, points[1:]):
-        active = [q for q in shown if q[0] <= a and q[1] >= b]
-        if not active:
-            continue
-        # newest first, then as many older ones as fit, shown oldest on top
-        active.sort(key=lambda q: q[0], reverse=True)
-        keep, lines = [], 0
-        for q in active:
-            n = q[2].count('\n') + 1
-            if keep and lines + n > max_lines:
-                break
-            keep.append(q)
-            lines += n
-        body = '\n'.join(q[2] for q in reversed(keep))
-        if out and out[-1][2] == body and out[-1][1] == a:
-            out[-1][1] = b  # same text continues
+    groups = []
+    for a, b, body in cues:
+        g = groups[-1] if groups else None
+        n = body.count('\n') + 1
+        # lines that start within min_ms of the block's first line join it, so a line is
+        # never shown more than min_ms before it is spoken
+        if g and a - g['start'] < min_ms and g['lines'] + n <= max_lines:
+            g['bodies'].append(body)
+            g['lines'] += n
+            g['end'] = max(g['end'], b)
         else:
-            out.append([a, b, body])
+            groups.append({'start': a, 'end': b, 'lines': n, 'bodies': [body]})
+    out = []
+    for i, g in enumerate(groups):
+        end = max(g['end'], g['start'] + min_ms)
+        if i + 1 < len(groups):
+            end = min(end, groups[i + 1]['start'])  # never overlap the next block
+        out.append([g['start'], end, '\n'.join(g['bodies'])])
     return out
 
 

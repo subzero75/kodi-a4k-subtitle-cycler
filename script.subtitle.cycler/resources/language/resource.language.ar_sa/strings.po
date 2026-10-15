@@ -70,9 +70,9 @@ msgid "a4kSubtitles only downloads automatically when Kodi knows the IMDb id, wh
 msgstr "إضافة a4kSubtitles لا تنزّل تلقائياً إلا إذا عرف كودي رقم IMDb، وبعض المشغلات لا تمرره. عندها تُحمَّل بعد نحو 15 ثانية أول ترجمة تناسب الفيديو، إلا إذا كان فيه ترجمة بلغتك."
 
 msgctxt "#32016"
-msgid "Keep fast lines on screen at least (ms)"
-msgstr "إبقاء الأسطر السريعة على الشاشة مدة لا تقل عن (ملّي ثانية)"
+msgid "Show fast lines together (ms)"
+msgstr "عرض الأسطر السريعة معاً (ملّي ثانية)"
 
 msgctxt "#32017"
-msgid "When people talk fast, a line stays until it has been shown this long and the next lines appear under it, so several lines are on screen together (up to 4 text lines). 0 = off."
-msgstr "عند الكلام السريع يبقى السطر حتى يُعرض هذه المدة، وتظهر الأسطر التالية تحته، فتجتمع عدة أسطر على الشاشة (حتى 4 أسطر). 0 = إيقاف."
+msgid "When people talk fast, lines that start within this time of each other are shown together as one block and disappear together, so you have time to read (up to 4 text lines). 0 = off."
+msgstr "عند الكلام السريع تُعرض الأسطر التي تبدأ خلال هذه المدة من بعضها معاً ككتلة واحدة وتختفي معاً، فيكفي الوقت لقراءتها (حتى 4 أسطر). 0 = إيقاف."
