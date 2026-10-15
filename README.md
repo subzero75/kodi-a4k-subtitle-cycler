@@ -7,7 +7,7 @@ A Kodi add-on with four independent features:
 3. **Sync to the embedded subtitles** (optional, **experimental**) – when the video is an MKV with a text subtitle track (in any language), external SRT subtitles are shifted, and stretched for 23.976/24/25 fps mix-ups, so their timing matches that track. Handy when the only well-timed track is in another language than the one you want.
 4. **Subtitles for anime from [Otaku](https://github.com/Goldenfreddy0703/Otaku)** (optional, **experimental**) – Otaku gives Kodi no IMDb id, so a4kSubtitles finds nothing for its anime. The add-on takes the ids from Otaku's own database, searches a4kSubtitles with them and with the show's title, and loads the first subtitle that fits the episode. Tested only with *Bleach: Thousand-Year Blood War* so far.
 
-Tested on Kodi 22 Beta 2 / CoreELEC (Ugoos AM9 Pro).
+Tested on Kodi 22 Beta 2 / CoreELEC (Ugoos AM9 Pro). Sync has also been reported working on Kodi 21.2 (Google TV Streamer) by a user.
 
 ## Install
 
