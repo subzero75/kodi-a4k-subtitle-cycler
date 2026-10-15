@@ -43,57 +43,6 @@
           <default>false</default>
           <control type="toggle"/>
         </setting>
-        <setting id="stack" type="boolean" label="32020" help="32021">
-          <level>0</level>
-          <default>false</default>
-          <control type="toggle"/>
-        </setting>
-        <setting id="stack_ms" type="integer" label="32016" help="32017">
-          <level>0</level>
-          <default>1500</default>
-          <constraints>
-            <minimum>250</minimum>
-            <step>250</step>
-            <maximum>4000</maximum>
-          </constraints>
-          <dependencies>
-            <dependency type="enable" setting="stack">true</dependency>
-          </dependencies>
-          <control type="slider" format="integer">
-            <popup>false</popup>
-          </control>
-        </setting>
-        <setting id="stack_dash" type="boolean" label="32024" help="32025">
-          <level>0</level>
-          <default>true</default>
-          <dependencies>
-            <dependency type="enable" setting="stack">true</dependency>
-          </dependencies>
-          <control type="toggle"/>
-        </setting>
-        <setting id="stack_dim" type="boolean" label="32022" help="32023">
-          <level>0</level>
-          <default>false</default>
-          <dependencies>
-            <dependency type="enable" setting="stack">true</dependency>
-          </dependencies>
-          <control type="toggle"/>
-        </setting>
-        <setting id="stack_count" type="integer" label="32018" help="32019">
-          <level>0</level>
-          <default>2</default>
-          <constraints>
-            <minimum>2</minimum>
-            <step>1</step>
-            <maximum>4</maximum>
-          </constraints>
-          <dependencies>
-            <dependency type="enable" setting="stack">true</dependency>
-          </dependencies>
-          <control type="slider" format="integer">
-            <popup>false</popup>
-          </control>
-        </setting>
       </group>
       <group id="2" label="32009">
         <setting id="otaku" type="boolean" label="32010" help="32011">

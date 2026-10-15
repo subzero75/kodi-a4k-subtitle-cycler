@@ -122,90 +122,6 @@ def format_srt(cues):
                    for n, (a, b, body) in enumerate(cues, 1))
 
 
-OLD_LINE_COLOR = '#9A9A9A'
-
-
-def _dim(body):
-    """An older stacked line in grey, so the newest line stands out."""
-    return '\n'.join('<font color="%s">%s</font>' % (OLD_LINE_COLOR, line) if line.strip() else line
-                     for line in body.split('\n'))
-
-
-def _rtl(text):
-    """True when the first letter of the text is from a right-to-left script (Arabic, Hebrew,
-    Persian, Urdu...)."""
-    import unicodedata
-    for ch in re.sub(r'<[^>]+>|\{[^}]*\}', '', text):
-        kind = unicodedata.bidirectional(ch)
-        if kind in ('R', 'AL'):
-            return True
-        if kind == 'L':
-            return False
-    return False
-
-
-def _dash(body):
-    """'- ' at the start of a stacked line (unless it already starts with a dash).
-
-    A dash is neutral for text direction, so in Arabic or Hebrew Kodi would draw it at the
-    left, the end of the sentence. A right-to-left mark in front keeps it on the right."""
-    lines = body.split('\n')
-    first = re.sub(r'^(\s*(?:<[^>]+>|\{[^}]*\})*)', '', lines[0])
-    if not first.lstrip().startswith(('-', '\u2013', '\u2014')):
-        lines[0] = ('\u200f- ' if _rtl(body) else '- ') + lines[0]
-    return '\n'.join(lines)
-
-
-def stack_fast(cues, fast_ms, count=2, max_gap=1000, dim=False, dash=True):
-    """Fast dialogue, rolled up: when a line is followed by the next one within fast_ms,
-    it stays on screen above the new line instead of vanishing. A third fast line joins
-    under them, and so on; only the newest `count` lines are kept (oldest on top).
-    Everything leaves together when the newest line ends (its gap-fixed end).
-
-    Each original line still starts and ends at its own time, so nothing flashes."""
-    if not cues or fast_ms <= 0 or count < 2:
-        return cues
-    out = []
-    chain = []
-    for i, (a, b, body) in enumerate(cues):
-        if chain:
-            pa, pb, _ = cues[i - 1]
-            if a - pa < fast_ms and a - pb <= max_gap:
-                # the previous line stays until this one starts, no blink in between
-                out[-1][1] = max(out[-1][1], a)
-            else:
-                chain = []
-        chain.append(body)
-        shown = chain[-count:]
-        if dash:
-            # every line, stacked or not, so a line looks the same when the next one joins it
-            shown = [_dash(t) for t in shown]
-        if dim and len(shown) > 1:
-            shown = [_dim(t) for t in shown[:-1]] + shown[-1:]
-        out.append([a, b, '\n'.join(shown)])
-    return out
-
-
-def stack_ass(cues, fast_ms, count=2, max_gap=1000):
-    """stack_fast for ASS lines (changed in place): a fast line stays until the line
-    count-1 places after it in the same fast run ends."""
-    runs, run = [], []
-    for i, q in enumerate(cues):
-        if run:
-            p = cues[i - 1]
-            if not (q[0] - p[0] < fast_ms and q[0] - p[1] <= max_gap):
-                runs.append(run)
-                run = []
-        run.append(q)
-    if run:
-        runs.append(run)
-    for run in runs:
-        ends = [q[1] for q in run]
-        for k, q in enumerate(run):
-            q[1] = max(ends[k:k + count])
-    return cues
-
-
 def gap_close(cues, max_gap, extend):
     """Close short gaps between lines and keep lines a little longer over long gaps."""
     for cur, nxt in zip(cues, cues[1:]):
@@ -493,24 +409,8 @@ def sync_cues(cues):
     return subsync.apply(cues, a, b), tag
 
 
-def stack_ms():
-    """How soon the next line must come to stack fast lines; 0 when the feature is off."""
-    try:
-        a = addon()
-        return a.getSettingInt('stack_ms') if a.getSettingBool('stack') else 0
-    except Exception:
-        return 0
-
-
-def stack_count():
-    try:
-        return max(2, addon().getSettingInt('stack_count'))
-    except Exception:
-        return 2
-
-
 def any_fix_on():
-    return gapfix_on() or sync_on() or stack_ms() > 0
+    return gapfix_on() or sync_on()
 
 
 def gapfix_on():
@@ -727,16 +627,11 @@ def _prepare_raw(raw, path):
     if not raw.strip() or ('\x00' in text and not _utf16(raw)):
         return unusable('not a subtitle file', path)
     is_srt = bool(TS.search(text))
-    gap, sync, stack = gapfix_on(), sync_on(), stack_ms()
-    if is_srt and (gap or sync or stack):
+    gap, sync = gapfix_on(), sync_on()
+    if is_srt and (gap or sync):
         cues = parse_srt(decode(raw))
         if cues:
             cues = _fix(cues, gap, sync)
-            if stack:
-                cues = stack_fast(cues, stack, stack_count(), dim=setting_on('stack_dim', False),
-                                   dash=setting_on('stack_dash'))
-                LAST_TAGS.append('stack')
-                log('fast lines (next one within %d ms) stacked, up to %d' % (stack, stack_count()))
         if LAST_TAGS:
             # Plain UTF-8 without BOM and with CRLF line ends, like the files Kodi loads fine
             dst = _write_unique(format_srt(cues).replace('\n', '\r\n').encode('utf-8'), '.srt', path)
@@ -750,15 +645,9 @@ def _prepare_raw(raw, path):
             # line indexes of the cues moved by the inserted lines (all above the events)
             cues = [[a, b, i + len(lines) - before] for a, b, i in cues]
         if cues or res:
-            if cues and (gap or sync or stack):
+            if cues and (gap or sync):
                 dialogue = ass_dialogue(lines, cues, fields)
                 _fix(cues, gap, sync, dialogue)
-                if stack:
-                    # same roll-up for the dialogue lines; libass stacks lines that are on
-                    # screen at the same time by itself
-                    talk = [q for q in cues if dialogue is None or dialogue(q[2])]
-                    stack_ass(talk, stack, stack_count())
-                    LAST_TAGS.append('stack')
             if LAST_TAGS or res:
                 ext = os.path.splitext(path)[1].lower()
                 dst = _write_unique(format_ass(lines, cues, fields).encode('utf-8'),
