@@ -31,7 +31,8 @@ class Player(xbmc.Player):
         self.prefetch = time.time() + 5
         self.start = time.time() - 3
         # a4kSubtitles cannot auto-download for Otaku anime (no IMDb id): do it with the button logic
-        self.anime_auto = time.time() + 15 if self._is_otaku() and c.setting_on('otaku_auto') else 0
+        # a4kSubtitles only auto-downloads when Kodi knows the IMDb id; decided after 15 s
+        self.anime_auto = time.time() + 15
         self.known = {}
         c.reset_seen()
         # New playback: forget the previous result list so the next press searches again
@@ -126,6 +127,30 @@ def check(player):
             c.log('failed on %s: %s' % (path, e), xbmc.LOGWARNING)
 
 
+def has_wanted_subtitle(player):
+    """True when the video has a subtitle track in one of the subtitle download languages."""
+    try:
+        langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or []
+        want = {xbmc.convertLanguage(l, xbmc.ISO_639_2) for l in langs} - {''}
+        have = set(player.getAvailableSubtitleStreams())
+        return bool(want & have)
+    except Exception:
+        return False
+
+
+def auto_load_reason(player):
+    """Why the button logic should load a subtitle now, or None."""
+    if c.seen():
+        return None  # a subtitle was already loaded
+    if Player._is_otaku():
+        return 'otaku anime' if c.setting_on('otaku_auto') else None
+    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
+        return None  # a4kSubtitles takes care of it
+    if not c.setting_on('noid_auto') or has_wanted_subtitle(player):
+        return None
+    return 'no IMDb id'
+
+
 def run():
     monitor = xbmc.Monitor()
     player = Player()
@@ -142,8 +167,9 @@ def run():
                         c.log('prefetch failed: %s' % e, xbmc.LOGWARNING)
             if player.anime_auto and time.time() > player.anime_auto:
                 player.anime_auto = 0
-                if not c.seen():  # no subtitle was loaded yet
-                    c.log('otaku anime: loading a subtitle automatically')
+                why = auto_load_reason(player)
+                if why:
+                    c.log('%s: loading a subtitle automatically' % why)
                     xbmc.executebuiltin('RunScript(script.subtitle.cycler)')
             check(player)
 

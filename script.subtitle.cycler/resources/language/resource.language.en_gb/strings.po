@@ -42,7 +42,7 @@ msgid "For MKV videos with a text subtitle track (any language): shift external 
 msgstr ""
 
 msgctxt "#32009"
-msgid "Anime from Otaku"
+msgid "Videos without an IMDb id"
 msgstr ""
 
 msgctxt "#32010"
@@ -59,4 +59,12 @@ msgstr ""
 
 msgctxt "#32013"
 msgid "About 15 seconds after an Otaku episode starts, the first subtitle that fits the video is loaded."
+msgstr ""
+
+msgctxt "#32014"
+msgid "Load a subtitle automatically when the video has no IMDb id"
+msgstr ""
+
+msgctxt "#32015"
+msgid "a4kSubtitles only downloads automatically when Kodi knows the IMDb id, which some players do not pass on. Then, about 15 seconds after the start, the first subtitle that fits the video is loaded, unless the video already has a subtitle in your language."
 msgstr ""
