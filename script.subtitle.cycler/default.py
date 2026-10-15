@@ -54,9 +54,35 @@ def otaku_metas():
     return metas
 
 
+NAME_SXXEYY = re.compile(r'^(.*?)[\s._\-\[(]+s(\d{1,2})[\s._-]?e(\d{1,3})(?!\d)', re.I)
+NAME_YEAR = re.compile(r'^(.*?)[\s._\-\[(]+((?:19|20)\d\d)(?!\d)')
+
+
+def name_metas():
+    """Lookups from the file name when Kodi knows nothing about the video (no IMDb id, no
+    show title), e.g. a .strm file or a link played from a file list. a4kSubtitles then looks
+    the IMDb id up from the title."""
+    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
+        return []
+    names = [xbmc.getInfoLabel('VideoPlayer.TVShowTitle'), xbmc.getInfoLabel('VideoPlayer.Title'),
+             xbmc.getInfoLabel('Player.Filename'), os.path.basename(xbmc.Player().getPlayingFile())]
+    for raw in names:
+        name = os.path.splitext(raw or '')[0] if (raw or '').lower().endswith(
+            ('.strm', '.mkv', '.mp4', '.avi', '.ts', '.m2ts')) else (raw or '')
+        m = NAME_SXXEYY.search(name)
+        if m and m.group(1).strip(' ._-'):
+            show = re.sub(r'^\[[^\]]*\]\s*', '', re.sub(r'[._]+', ' ', m.group(1))).strip(' -')
+            show = NAME_YEAR.sub(r'\1', show).strip(' -(') or show
+            meta = {'imdb_id': '', 'movie': False, 'title': show, 'tvshow': show,
+                    'season': int(m.group(2)), 'episode': int(m.group(3))}
+            c.log('no IMDb id: "%s" -> "%s" S%02dE%02d' % (name, show, meta['season'], meta['episode']))
+            return [meta]
+    return []
+
+
 def search():
     langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or ['English']
-    anime = otaku_metas()
+    anime = otaku_metas() or name_metas()
     if anime:
         # any numbering one of the lookups uses is the right episode
         episodes = {(m['season'], m['episode']) for m in anime if not m['movie']} or None
