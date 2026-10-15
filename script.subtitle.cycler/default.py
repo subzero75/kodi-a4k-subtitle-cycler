@@ -194,6 +194,7 @@ def cycle(p):
             hashes[str(i)] = c.digest(raw)
             if hashes[str(i)] in already:
                 continue
+            c.SOURCE[:] = [c.source_name(st['results'][i]['file'])]
             prep = c.prepare(got, st.get('episodes') or ())
             if prep[0] is None:
                 # A zip with a text note, a broken download...: never worth showing

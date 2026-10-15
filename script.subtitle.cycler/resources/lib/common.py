@@ -464,6 +464,29 @@ def _language_token(token):
     return None
 
 
+# Where the subtitle came from (e.g. "OpenSubtitles"); set by the button before prepare()
+SOURCE = []
+SITE_NAMES = {'opensubtitles': 'OpenSubtitles', 'subdl': 'Subdl', 'subsource': 'SubSource',
+              'podnadpisi': 'Podnapisi', 'podnapisi': 'Podnapisi', 'addic7ed': 'Addic7ed',
+              'bsplayer': 'BSPlayer', 'subscene': 'Subscene', 'yifysubtitles': 'YIFY',
+              'gestdown': 'Gestdown', 'napiprojekt': 'NapiProjekt', 'subtitlecat': 'SubtitleCat'}
+
+
+def source_name(url):
+    """Nice site name for a subtitle add-on download URL: a4kSubtitles' own site
+    (service_name=...), else the add-on's name (service.subtitles.opensubtitles_com ->
+    OpenSubtitles)."""
+    m = re.search(r'[?&]service_name=([A-Za-z0-9_]+)', url or '')
+    if m:
+        key = m.group(1).lower()
+        return SITE_NAMES.get(key, key.capitalize())
+    m = re.match(r'plugin://service\.subtitles\.([A-Za-z0-9_]+)', url or '')
+    if m:
+        key = re.sub(r'_(com|org|net)$', '', m.group(1).lower())
+        return SITE_NAMES.get(key, key.capitalize())
+    return ''
+
+
 def display_name(src):
     """(name, language) for the copy of src, so Kodi's subtitle list shows e.g.
     'Arabic - Lost - s01e22 - Born to Run' instead of a random file name."""
@@ -500,6 +523,8 @@ def _write_unique(data, ext, src=None):
     # Kodi reuses an already loaded subtitle with the same path, so every file gets a new name;
     # the short code keeps names unique without hiding the real name in Kodi's list
     name, lang = display_name(src)
+    if SOURCE and SOURCE[0]:
+        name = '%s - %s' % (name, SOURCE[0])
     code = uuid.uuid4().hex[:4]
     dst = os.path.join(OUT_DIR, '%s [%s]%s%s' % (name, code, '.' + lang if lang else '', ext))
     with open(dst, 'wb') as fh:
