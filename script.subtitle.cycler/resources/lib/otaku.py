@@ -73,6 +73,7 @@ def lookup(item):
             return None
         row = dict(row)
         season = row.get('thetvdb_season')
+        part = None
         offset = (_first_number(row.get('global_media_episodes')) or 1) - 1
         if not row.get('imdb_id'):
             # New parts often have no ids yet: take them from the earlier parts of the same
@@ -90,13 +91,14 @@ def lookup(item):
             same = [s for s in siblings if int(s['thetvdb_season']) == season]
             row['imdb_id'] = same[0]['imdb_id']
             offset = max(_last_number(s.get('global_media_episodes')) or 0 for s in same)
+            part = len(same) + 1  # Part 1..3 of Bleach TYBW are season 17, so this is part 4
             c.log('otaku: "%s" has no ids, using %s season %s after episode %d' % (
                 row.get('mal_title'), row['imdb_id'], season, offset))
         if item.get('movie'):
             return {'imdb_id': row['imdb_id'], 'movie': True, 'title': row.get('mal_title')}
         if not str(season or '').isdigit() or int(season) == 0:
             season, offset = 1, 0  # absolute numbering ("a") or specials: best effort
-        return {'imdb_id': row['imdb_id'], 'season': int(season),
+        return {'imdb_id': row['imdb_id'], 'season': int(season), 'part': part,
                 'episode': offset + item['episode'], 'movie': False, 'title': row.get('mal_title')}
     finally:
         con.close()
@@ -121,7 +123,8 @@ def candidates(item):
         mapped = None
     if mapped:
         out.append(mapped)
-    show = xbmc.getInfoLabel('VideoPlayer.TVShowTitle') or xbmc.getInfoLabel('VideoPlayer.Title')
+    tvshow, title, season_label = original_labels()
+    show = tvshow or title
     base = show.split(' - ')[0].strip()
     if base:
         # a4kSubtitles gives up without an IMDb id ("missing imdb id!") unless Kodi also knows
@@ -133,11 +136,11 @@ def candidates(item):
         if not meta['movie']:
             m = SXXEYY.search(os.path.basename(xbmc.Player().getPlayingFile()))
             season, episode = (int(m.group(1)), int(m.group(2))) if m else (
-                int(xbmc.getInfoLabel('VideoPlayer.Season') or 1), item['episode'])
+                int(season_label or 1), item['episode'])
             meta.update({'tvshow': base, 'season': season, 'episode': episode})
             # Releases often restart at S01 for every part, while subtitle sites list the
             # 4th part as season 4: try that numbering too
-            part = _part_number(item)
+            part = mapped.get('part') if mapped else None
             if part and part != season:
                 metas.append(dict(meta, season=part, episode=item['episode']))
         for meta in metas:
@@ -146,28 +149,6 @@ def candidates(item):
                        for o in out):
                 out.append(meta)
     return out
-
-
-def _part_number(item):
-    """Which part of a show an Otaku anime is, from its MAL title: "Bleach: Sennen Kessen-hen"
-    is part 1, "... - Kashin-tan" (the 4th MAL entry of that name) part 4. None if unknown."""
-    db = xbmcvfs.translatePath('special://profile/addon_data/plugin.video.otaku/mappings.db')
-    if not os.path.exists(db):
-        return None
-    con = sqlite3.connect(db)
-    try:
-        row = con.execute('SELECT mal_title FROM anime WHERE mal_id=?', (item['mal_id'],)).fetchone()
-        if not row or ' - ' not in (row[0] or ''):
-            return None
-        base = row[0].split(' - ')[0]
-        ids = sorted(r[0] for r in con.execute(
-            "SELECT mal_id FROM anime WHERE mal_title=? OR mal_title LIKE ?", (base, base + ' - %')))
-        return ids.index(item['mal_id']) + 1 if item['mal_id'] in ids else None
-    except Exception as e:
-        c.log('otaku: part number failed: %s' % e, xbmc.LOGWARNING)
-        return None
-    finally:
-        con.close()
 
 
 def a4k_search(meta, langs):
@@ -332,6 +313,22 @@ def from_file_name():
 PROP_TAGGED = 'subtitlecycler.tagged'
 
 
+PROP_ORIGINAL = 'subtitlecycler.original'
+
+
+def original_labels():
+    """[show title, title, season] as the video came, before tag_playing wrote ours over them."""
+    if tagged_by_us():
+        try:
+            saved = json.loads(xbmcgui.Window(10000).getProperty(PROP_ORIGINAL))
+            if isinstance(saved, list) and len(saved) == 3:
+                return saved
+        except ValueError:
+            pass
+    return [xbmc.getInfoLabel('VideoPlayer.TVShowTitle'), xbmc.getInfoLabel('VideoPlayer.Title'),
+            xbmc.getInfoLabel('VideoPlayer.Season')]
+
+
 def tagged_by_us():
     return bool(xbmcgui.Window(10000).getProperty(PROP_TAGGED))
 
@@ -363,6 +360,8 @@ def tag_playing(player):
     too, not only the button. Returns True when the video was updated."""
     home = xbmcgui.Window(10000)
     home.clearProperty(PROP_TAGGED)
+    original = original_labels()
+    home.setProperty(PROP_ORIGINAL, json.dumps(original))
     if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
         return False
     meta = None
@@ -393,7 +392,8 @@ def tag_playing(player):
                 tag.setMediaType('movie')
             else:
                 tag.setMediaType('episode')
-                tag.setTvShowTitle(meta.get('tvshow') or meta.get('title') or '')
+                # keep the show's own (English) title; ours may be Otaku's romaji MAL title
+                tag.setTvShowTitle(original[0] or meta.get('tvshow') or meta.get('title') or '')
                 tag.setSeason(int(meta['season']))
                 tag.setEpisode(int(meta['episode']))
             player.updateInfoTag(li)
