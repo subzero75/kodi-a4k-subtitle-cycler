@@ -354,6 +354,27 @@ def _playing_paths(player):
     return out
 
 
+def _most_results(metas):
+    """The lookup that finds the most subtitles. Kodi's subtitle window can only search with
+    the one we write into the video, so pick it the way the button would (e.g. Bleach part 4
+    finds 2 old episodes as Bleach S17E46, but many as Thousand-Year Blood War S04E06)."""
+    if len(metas) < 2:
+        return metas[0] if metas else None
+    langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or ['English']
+    best, most = metas[0], -1
+    for m in metas:
+        try:
+            n = len(a4k_search(m, langs))
+        except Exception as e:
+            c.log('otaku: test search failed: %s' % e, xbmc.LOGWARNING)
+            n = 0
+        c.log('otaku: %s%s finds %d subtitles' % (
+            m['imdb_id'], '' if m['movie'] else ' S%02dE%02d' % (m['season'], m['episode']), n))
+        if n > most:
+            best, most = m, n
+    return best
+
+
 def tag_playing(player):
     """Give the playing video the IMDb id, show, season and episode we found, so that Kodi's
     own subtitle search window, a4kSubtitles and any other subtitle add-on can search for it
@@ -368,7 +389,7 @@ def tag_playing(player):
     item = current()
     if item:
         found = candidates(item)
-        meta = next((m for m in found if m.get('imdb_id')), None)
+        meta = _most_results([m for m in found if m.get('imdb_id')])
         if not meta and found and not found[0]['movie']:
             meta = dict(found[0], imdb_id=imdb_from_title(found[0].get('tvshow') or found[0]['title']))
     else:
