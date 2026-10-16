@@ -201,3 +201,82 @@ def imdb_from_title(title, year=None, movie=False):
     best = min(hits, key=lambda d: d.get('rank') or 10 ** 9)
     c.log('IMDb lookup: "%s" -> %s (%s %s)' % (title, best['id'], best.get('l'), best.get('y')))
     return best['id']
+
+
+NAME_SXXEYY = re.compile(r'^(.*?)[\s._\-\[(]+s(\d{1,2})[\s._-]?e(\d{1,3})(?!\d)', re.I)
+NAME_YEAR = re.compile(r'^(.*?)[\s._\-\[(]+((?:19|20)\d\d)(?!\d)')
+VIDEO_EXTS = ('.strm', '.mkv', '.mp4', '.avi', '.ts', '.m2ts', '.mov', '.webm')
+
+
+def from_file_name():
+    """{'imdb_id', 'tvshow', 'season', 'episode', ...} from the playing file's name
+    ("Lost S01E25 Exodus Part 3"), for videos Kodi knows nothing about (.strm files, links
+    played from a file list, local files outside the library); None if the name has no SxxEyy."""
+    names = [xbmc.getInfoLabel('VideoPlayer.TVShowTitle'), xbmc.getInfoLabel('VideoPlayer.Title'),
+             xbmc.getInfoLabel('Player.Filename'), os.path.basename(xbmc.Player().getPlayingFile())]
+    for raw in names:
+        raw = raw or ''
+        name = os.path.splitext(raw)[0] if raw.lower().endswith(VIDEO_EXTS) else raw
+        m = NAME_SXXEYY.search(name)
+        if not (m and m.group(1).strip(' ._-')):
+            continue
+        show = re.sub(r'^\[[^\]]*\]\s*', '', re.sub(r'[._]+', ' ', m.group(1))).strip(' -')
+        y = NAME_YEAR.search(show)
+        year = y.group(2) if y else None
+        show = NAME_YEAR.sub(r'\1', show).strip(' -(') or show
+        meta = {'imdb_id': imdb_from_title(show, year), 'movie': False, 'title': show, 'tvshow': show,
+                'season': int(m.group(2)), 'episode': int(m.group(3))}
+        c.log('no IMDb id: "%s" -> "%s" S%02dE%02d' % (name, show, meta['season'], meta['episode']))
+        return meta
+    return None
+
+
+PROP_TAGGED = 'subtitlecycler.tagged'
+
+
+def tagged_by_us():
+    return bool(xbmcgui.Window(10000).getProperty(PROP_TAGGED))
+
+
+def tag_playing(player):
+    """Give the playing video the IMDb id, show, season and episode we found, so that Kodi's
+    own subtitle search window, a4kSubtitles and any other subtitle add-on can search for it
+    too, not only the button. Returns True when the video was updated."""
+    home = xbmcgui.Window(10000)
+    home.clearProperty(PROP_TAGGED)
+    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
+        return False
+    meta = None
+    item = current()
+    if item:
+        found = candidates(item)
+        meta = next((m for m in found if m.get('imdb_id')), None)
+        if not meta and found and not found[0]['movie']:
+            meta = dict(found[0], imdb_id=imdb_from_title(found[0].get('tvshow') or found[0]['title']))
+    else:
+        meta = from_file_name()
+    if not meta or not meta.get('imdb_id') or not player.isPlayingVideo():
+        return False
+    try:
+        li = xbmcgui.ListItem(path=player.getPlayingFile())
+        tag = li.getVideoInfoTag()
+        tag.setIMDBNumber(meta['imdb_id'])
+        tag.setUniqueIDs({'imdb': meta['imdb_id']}, 'imdb')
+        title = xbmc.getInfoLabel('VideoPlayer.Title') or meta.get('title') or ''
+        if title:
+            tag.setTitle(title)
+        if meta['movie']:
+            tag.setMediaType('movie')
+        else:
+            tag.setMediaType('episode')
+            tag.setTvShowTitle(meta.get('tvshow') or meta.get('title') or '')
+            tag.setSeason(int(meta['season']))
+            tag.setEpisode(int(meta['episode']))
+        player.updateInfoTag(li)
+    except Exception as e:
+        c.log('could not update the playing video: %s' % e, xbmc.LOGWARNING)
+        return False
+    home.setProperty(PROP_TAGGED, meta['imdb_id'])
+    c.log('playing video now has %s%s, so every subtitle search can find it' % (
+        meta['imdb_id'], '' if meta['movie'] else ' S%02dE%02d' % (meta['season'], meta['episode'])))
+    return True

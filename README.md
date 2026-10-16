@@ -8,6 +8,7 @@ A Kodi add-on with four independent features:
 4. **Subtitles for videos Kodi has no IMDb id for** (optional, **experimental**) – a4kSubtitles only searches, and only auto-downloads, when Kodi knows the video's IMDb id. Some players do not pass it on, and `.strm` files or links played from a file list have none. The add-on then finds the id itself and loads the first subtitle that fits:
    - **Anime from [Otaku](https://github.com/Goldenfreddy0703/Otaku):** ids from Otaku's own database, plus a search by the show's title. Tested only with *Bleach: Thousand-Year Blood War* so far.
    - **Other videos:** the show name, season and episode from the file name (`Lost S01E25 ...`), and the IMDb id from IMDb's search.
+   - What it found is also written into the playing video's details, so Kodi's own subtitle search window and every subtitle add-on can search for it too, not only the button.
 
 Tested on Kodi 22 Beta 2 / CoreELEC (Ugoos AM9 Pro). Sync has also been reported working on Kodi 21.2 (Google TV Streamer) by a user.
 

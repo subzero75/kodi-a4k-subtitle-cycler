@@ -1,5 +1,5 @@
 import os, time
-import xbmc, xbmcvfs
+import xbmc, xbmcgui, xbmcvfs
 from resources.lib import common as c
 
 SKIP_EXT = ('.json', '.db', '.xml', '.log', '.zip', '.rar', '.7z', '.gz', '.py', '.pyc', '.png', '.jpg')
@@ -13,6 +13,7 @@ class Player(xbmc.Player):
         self.known = {}
         self.prefetch = 0
         self.anime_auto = 0
+        self.tag_at = 0
 
     @staticmethod
     def _is_otaku():
@@ -29,6 +30,8 @@ class Player(xbmc.Player):
         except Exception as e:
             c.log('otaku check failed: %s' % e, xbmc.LOGWARNING)
         self.prefetch = time.time() + 5
+        self.tag_at = time.time() + 3
+        xbmcgui.Window(10000).clearProperty('subtitlecycler.tagged')
         self.start = time.time() - 3
         # a4kSubtitles cannot auto-download for Otaku anime (no IMDb id): do it with the button logic
         # a4kSubtitles only auto-downloads when Kodi knows the IMDb id; decided after 15 s
@@ -144,8 +147,9 @@ def auto_load_reason(player):
         return None  # a subtitle was already loaded
     if Player._is_otaku():
         return 'otaku anime' if c.setting_on('otaku_auto') else None
-    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
-        return None  # a4kSubtitles takes care of it
+    from resources.lib import otaku
+    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt') and not otaku.tagged_by_us():
+        return None  # a4kSubtitles takes care of it (it had the IMDb id from the start)
     if not c.setting_on('noid_auto') or has_wanted_subtitle(player):
         return None
     return 'no IMDb id'
@@ -165,6 +169,14 @@ def run():
                         c.reference_starts(player.getPlayingFile(), quiet=True)
                     except Exception as e:
                         c.log('prefetch failed: %s' % e, xbmc.LOGWARNING)
+            if player.tag_at and time.time() > player.tag_at:
+                player.tag_at = 0
+                if c.setting_on('noid_auto') or Player._is_otaku():
+                    try:
+                        from resources.lib import otaku
+                        otaku.tag_playing(player)
+                    except Exception as e:
+                        c.log('tagging the video failed: %s' % e, xbmc.LOGWARNING)
             if player.anime_auto and time.time() > player.anime_auto:
                 player.anime_auto = 0
                 why = auto_load_reason(player)

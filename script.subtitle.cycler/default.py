@@ -40,9 +40,9 @@ def anime_rank(label, hints):
 
 def otaku_metas():
     """Lookups for subtitle sites when an anime from Otaku is playing (it gives Kodi no IMDb id)."""
-    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
-        return []
     from resources.lib import otaku
+    if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt') and not otaku.tagged_by_us():
+        return []
     item = otaku.current()
     if not item:
         return []
@@ -54,33 +54,13 @@ def otaku_metas():
     return metas
 
 
-NAME_SXXEYY = re.compile(r'^(.*?)[\s._\-\[(]+s(\d{1,2})[\s._-]?e(\d{1,3})(?!\d)', re.I)
-NAME_YEAR = re.compile(r'^(.*?)[\s._\-\[(]+((?:19|20)\d\d)(?!\d)')
-
-
 def name_metas():
-    """Lookups from the file name when Kodi knows nothing about the video (no IMDb id, no
-    show title), e.g. a .strm file or a link played from a file list. a4kSubtitles then looks
-    the IMDb id up from the title."""
+    """Lookups from the file name when Kodi knows nothing about the video."""
     if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt'):
         return []
-    names = [xbmc.getInfoLabel('VideoPlayer.TVShowTitle'), xbmc.getInfoLabel('VideoPlayer.Title'),
-             xbmc.getInfoLabel('Player.Filename'), os.path.basename(xbmc.Player().getPlayingFile())]
-    for raw in names:
-        name = os.path.splitext(raw or '')[0] if (raw or '').lower().endswith(
-            ('.strm', '.mkv', '.mp4', '.avi', '.ts', '.m2ts')) else (raw or '')
-        m = NAME_SXXEYY.search(name)
-        if m and m.group(1).strip(' ._-'):
-            show = re.sub(r'^\[[^\]]*\]\s*', '', re.sub(r'[._]+', ' ', m.group(1))).strip(' -')
-            y = NAME_YEAR.search(show)
-            year = y.group(2) if y else None
-            show = NAME_YEAR.sub(r'\1', show).strip(' -(') or show
-            from resources.lib import otaku
-            meta = {'imdb_id': otaku.imdb_from_title(show, year), 'movie': False, 'title': show, 'tvshow': show,
-                    'season': int(m.group(2)), 'episode': int(m.group(3))}
-            c.log('no IMDb id: "%s" -> "%s" S%02dE%02d' % (name, show, meta['season'], meta['episode']))
-            return [meta]
-    return []
+    from resources.lib import otaku
+    meta = otaku.from_file_name()
+    return [meta] if meta else []
 
 
 def search():
