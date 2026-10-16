@@ -130,6 +130,63 @@ def check(player):
             c.log('failed on %s: %s' % (path, e), xbmc.LOGWARNING)
 
 
+SIDECAR_EXTS = ('.srt', '.ass', '.ssa')
+
+
+def sidecar_subs(player):
+    """Subtitle files next to a local video ("Movie.mkv" -> "Movie.ar.srt", also in a "Subs"
+    folder). Kodi loads those itself, so the service never sees them being written."""
+    path = player.getPlayingFile()
+    if path.startswith(('http', 'plugin:', 'pvr:', 'upnp:')) or path.lower().endswith('.strm'):
+        return []
+    folder, name = path.rsplit('/', 1) if '/' in path else ('', path)
+    base = os.path.splitext(name)[0].lower()
+    out = []
+    for d in (folder, folder + '/Subs', folder + '/Subtitles', folder + '/subs'):
+        try:
+            _, files = xbmcvfs.listdir(d + '/')
+        except Exception:
+            continue
+        out += [d + '/' + f for f in files
+                if f.lower().endswith(SIDECAR_EXTS) and f.lower().startswith(base)]
+    return out
+
+
+def fix_sidecar(player):
+    """Give a subtitle that sits next to a local video the same gap fix and sync as downloaded
+    ones: when Kodi is showing it, load the fixed copy instead."""
+    if not c.any_fix_on() or not xbmc.getCondVisibility('VideoPlayer.SubtitlesEnabled'):
+        return
+    subs = sidecar_subs(player)
+    if not subs:
+        return
+    shown = xbmc.getInfoLabel('VideoPlayer.SubtitlesLanguage')
+    want = xbmc.convertLanguage(shown, xbmc.ISO_639_2) if shown else ''
+    pick = None
+    for sub in subs:
+        _, lang = c.display_name(sub)
+        if lang and want and xbmc.convertLanguage(lang, xbmc.ISO_639_2) == want:
+            pick = sub
+            break
+    if not pick and len(subs) == 1 and not want:
+        pick = subs[0]  # one subtitle without a language in its name, and Kodi shows no language
+    if not pick:
+        c.log('service: %d subtitle(s) next to the video, none matches the one shown (%s)'
+              % (len(subs), shown or 'no language'))
+        return
+    raw = c.read_bytes(pick)
+    if c.digest(raw) in c.seen():
+        return
+    sub, fixed = c.prepare(pick)
+    if fixed and player.isPlayingVideo():
+        c.log('service: subtitle next to the video %s -> %s' % (pick, sub))
+        tags, notes = list(c.LAST_TAGS), list(c.NOTES)
+        if c.load(player, sub, pick):
+            c.notify('%s  %s%s' % (' '.join('+' + t for t in tags) or 'in sync',
+                                   os.path.basename(pick)[:60],
+                                   ''.join('  (%s)' % t for t in notes)), 4000)
+
+
 def has_wanted_subtitle(player):
     """True when the video has a subtitle track in one of the subtitle download languages."""
     try:
@@ -171,6 +228,10 @@ def run():
                         c.log('prefetch failed: %s' % e, xbmc.LOGWARNING)
             if player.tag_at and time.time() > player.tag_at:
                 player.tag_at = 0
+                try:
+                    fix_sidecar(player)
+                except Exception as e:
+                    c.log('subtitle next to the video failed: %s' % e, xbmc.LOGWARNING)
                 if c.setting_on('noid_auto') or Player._is_otaku():
                     try:
                         from resources.lib import otaku

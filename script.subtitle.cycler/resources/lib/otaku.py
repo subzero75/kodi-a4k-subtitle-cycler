@@ -194,6 +194,9 @@ def imdb_from_title(title, year=None, movie=False):
             and re.sub(r'[^a-z0-9]+', ' ', (d.get('l') or '').lower()).strip() == want]
     if year:
         dated = [d for d in hits if d.get('y') == int(year)]
+        if movie and not dated:
+            dated = [d for d in hits if abs((d.get('y') or 0) - int(year)) <= 1]
+            hits = dated  # a movie of the same name from another year is another movie
         hits = dated or hits
     if not hits:
         c.log('IMDb lookup: no %s called "%s"' % ('movie' if movie else 'series', title))
@@ -204,31 +207,91 @@ def imdb_from_title(title, year=None, movie=False):
 
 
 NAME_SXXEYY = re.compile(r'^(.*?)[\s._\-\[(]+s(\d{1,2})[\s._-]?e(\d{1,3})(?!\d)', re.I)
+NAME_NXNN = re.compile(r'^(.*?)[\s._\-\[(]+(\d{1,2})x(\d{2,3})(?!\d)', re.I)
 NAME_YEAR = re.compile(r'^(.*?)[\s._\-\[(]+((?:19|20)\d\d)(?!\d)')
-VIDEO_EXTS = ('.strm', '.mkv', '.mp4', '.avi', '.ts', '.m2ts', '.mov', '.webm')
+SEASON_DIR = re.compile(r'^(?:season|series|staffel|saison|temporada|s)[\s._-]*(\d{1,2})$', re.I)
+EPISODE_ONLY = re.compile(r'^(?:e|ep|episode|\#)?[\s._-]*(\d{1,3})(?!\d)', re.I)
+VIDEO_EXTS = ('.strm', '.mkv', '.mp4', '.avi', '.ts', '.m2ts', '.mov', '.webm', '.wmv', '.m4v')
+JUNK = re.compile(r'\b(?:2160p|1080p|720p|480p|4k|uhd|hdr|web[\s.-]?dl|webrip|bluray|bdrip|remux|x26[45]|h\.?26[45]|hevc)\b.*$', re.I)
+
+
+def _clean(text):
+    """'[Group] The.Matrix.Reloaded_' -> 'The Matrix Reloaded'"""
+    text = re.sub(r'^\s*\[[^\]]*\]\s*', '', text)
+    text = re.sub(r'[._]+', ' ', text)
+    return re.sub(r'\s+', ' ', text).strip(' -([')
+
+
+def _split(path):
+    """(folder names from the outside in, file name without extension) of a playing path."""
+    path = (path or '').split('?')[0].replace('\\', '/')
+    parts = [p for p in path.split('/') if p]
+    if not parts:
+        return [], ''
+    name = parts[-1]
+    if name.lower().endswith(VIDEO_EXTS):
+        name = os.path.splitext(name)[0]
+    from urllib.parse import unquote
+    return [unquote(p) for p in parts[:-1]], unquote(name)
+
+
+def _episode_meta(show, season, episode, year=None):
+    show = _clean(show)
+    y = NAME_YEAR.search(show)
+    if y and not year:
+        year = y.group(2)
+    show = _clean(NAME_YEAR.sub(r'\1', show)) or show
+    if not show:
+        return None
+    return {'imdb_id': imdb_from_title(show, year), 'movie': False, 'title': show, 'tvshow': show,
+            'season': int(season), 'episode': int(episode)}
 
 
 def from_file_name():
-    """{'imdb_id', 'tvshow', 'season', 'episode', ...} from the playing file's name
-    ("Lost S01E25 Exodus Part 3"), for videos Kodi knows nothing about (.strm files, links
-    played from a file list, local files outside the library); None if the name has no SxxEyy."""
+    """{'imdb_id', 'tvshow', 'season', 'episode', ...} or a movie {'imdb_id', 'title', 'movie'}
+    from the playing file's name and folders, for videos Kodi knows nothing about (.strm files,
+    links played from a file list, local files outside the library). None when nothing fits.
+
+    Episodes: "Lost S01E25 ...", "Lost 1x25 ...", or "Lost/Season 1/25 - Exodus.mkv".
+    Movies: "The.Matrix.1999.1080p.mkv" (title and year)."""
+    playing = xbmc.Player().getPlayingFile()
+    dirs, fname = _split(playing)
     names = [xbmc.getInfoLabel('VideoPlayer.TVShowTitle'), xbmc.getInfoLabel('VideoPlayer.Title'),
-             xbmc.getInfoLabel('Player.Filename'), os.path.basename(xbmc.Player().getPlayingFile())]
-    for raw in names:
-        raw = raw or ''
-        name = os.path.splitext(raw)[0] if raw.lower().endswith(VIDEO_EXTS) else raw
-        m = NAME_SXXEYY.search(name)
-        if not (m and m.group(1).strip(' ._-')):
-            continue
-        show = re.sub(r'^\[[^\]]*\]\s*', '', re.sub(r'[._]+', ' ', m.group(1))).strip(' -')
-        y = NAME_YEAR.search(show)
-        year = y.group(2) if y else None
-        show = NAME_YEAR.sub(r'\1', show).strip(' -(') or show
-        meta = {'imdb_id': imdb_from_title(show, year), 'movie': False, 'title': show, 'tvshow': show,
-                'season': int(m.group(2)), 'episode': int(m.group(3))}
-        c.log('no IMDb id: "%s" -> "%s" S%02dE%02d' % (name, show, meta['season'], meta['episode']))
-        return meta
-    return None
+             xbmc.getInfoLabel('Player.Filename'), fname]
+    names = [os.path.splitext(n)[0] if n.lower().endswith(VIDEO_EXTS) else n for n in names if n]
+    meta = None
+    for name in names:
+        for rx in (NAME_SXXEYY, NAME_NXNN):
+            m = rx.search(' ' + name)
+            if m and _clean(m.group(1)):
+                meta = _episode_meta(m.group(1), m.group(2), m.group(3))
+                break
+            if m and dirs and not playing.startswith(('http', 'plugin:')):
+                # "S01E05.mkv" in a folder named after the show
+                show = next((d for d in reversed(dirs) if not SEASON_DIR.match(d.strip())), '')
+                meta = _episode_meta(show, m.group(2), m.group(3)) if show else None
+                break
+        if meta:
+            break
+    if not meta and len(dirs) >= 2 and not playing.startswith(('http', 'plugin:')):
+        # "Lost/Season 1/05 - Exodus.mkv"
+        sm = SEASON_DIR.match(dirs[-1].strip())
+        em = EPISODE_ONLY.match(fname.strip())
+        if sm and em:
+            meta = _episode_meta(dirs[-2], sm.group(1), em.group(1))
+    if not meta:
+        for name in names:
+            y = NAME_YEAR.search(name)
+            if y and _clean(y.group(1)):
+                title = _clean(JUNK.sub('', y.group(1)))
+                meta = {'imdb_id': imdb_from_title(title, y.group(2), movie=True), 'movie': True,
+                        'title': title, 'year': y.group(2)}
+                break
+    if meta:
+        c.log('no IMDb id: "%s" -> %s' % (fname or names[0], (
+            '"%s" (%s) movie' % (meta['title'], meta.get('year')) if meta['movie'] else
+            '"%s" S%02dE%02d' % (meta['tvshow'], meta['season'], meta['episode']))))
+    return meta
 
 
 PROP_TAGGED = 'subtitlecycler.tagged'
