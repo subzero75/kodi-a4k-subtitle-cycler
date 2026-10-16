@@ -14,6 +14,8 @@ import xbmcgui
 
 PROP = 'playback.hold'            # {"owner": deadline (unix time)}
 PAUSED = 'playback.hold.paused'   # set while the pause is ours
+MESSAGE = 'playback.hold.message' # [heading, text, last shown] of the notice while held
+SHOW_MS = 3000  # the notice is shown in short pieces, so it is gone soon after the hold ends
 
 
 def _home():
@@ -62,8 +64,20 @@ def start(owner, seconds, message=None):
         _home().setProperty(PAUSED, '1')
         _set_paused(True)
     if message:
-        xbmcgui.Dialog().notification(owner, message, xbmcgui.NOTIFICATION_INFO,
-                                      int(seconds * 1000), False)
+        _home().setProperty(MESSAGE, json.dumps([owner, message, 0]))
+        _notice()
+
+
+def _notice():
+    """Show the notice again shortly before the last one fades, while the video is held."""
+    try:
+        heading, text, shown = json.loads(_home().getProperty(MESSAGE) or 'null')
+    except (TypeError, ValueError):
+        return
+    if time.time() - shown < SHOW_MS / 1000.0 - 1:
+        return
+    xbmcgui.Dialog().notification(heading, text, xbmcgui.NOTIFICATION_INFO, SHOW_MS, False)
+    _home().setProperty(MESSAGE, json.dumps([heading, text, time.time()]))
 
 
 def release(owner):
@@ -75,15 +89,19 @@ def release(owner):
 
 
 def check():
-    """Call every second or so: plays the video again when every deadline has passed."""
+    """Call every second or so: plays the video again when every deadline has passed, and
+    keeps the notice up while it is held."""
     if not _home().getProperty(PAUSED):
         return
     if not any(v > time.time() for v in _holders().values()):
         _save({})
         _resume()
+    else:
+        _notice()
 
 
 def _resume():
+    _home().clearProperty(MESSAGE)
     if not _home().getProperty(PAUSED):
         return
     _home().clearProperty(PAUSED)
@@ -97,3 +115,4 @@ def stopped():
     """Playback ended: forget everything."""
     _home().clearProperty(PROP)
     _home().clearProperty(PAUSED)
+    _home().clearProperty(MESSAGE)
