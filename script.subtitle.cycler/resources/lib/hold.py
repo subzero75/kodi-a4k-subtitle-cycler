@@ -39,6 +39,17 @@ def _paused():
     return xbmc.getCondVisibility('Player.Paused')
 
 
+def _set_paused(paused):
+    """Pause or play explicitly. xbmc.Player().pause() toggles, so two add-ons pausing at the
+    same moment would pause and play again; Player.PlayPause with play=false/true does not."""
+    q = {'jsonrpc': '2.0', 'id': 1, 'method': 'Player.GetActivePlayers'}
+    players = json.loads(xbmc.executeJSONRPC(json.dumps(q))).get('result') or []
+    pid = next((p['playerid'] for p in players if p.get('type') == 'video'), 1)
+    q = {'jsonrpc': '2.0', 'id': 1, 'method': 'Player.PlayPause',
+         'params': {'playerid': pid, 'play': not paused}}
+    xbmc.executeJSONRPC(json.dumps(q))
+
+
 def start(owner, seconds, message=None):
     """Hold the playing video for up to `seconds` until release(owner)."""
     player = xbmc.Player()
@@ -48,8 +59,8 @@ def start(owner, seconds, message=None):
     holders[owner] = time.time() + seconds
     _save(holders)
     if not _home().getProperty(PAUSED) and not _paused():
-        player.pause()
         _home().setProperty(PAUSED, '1')
+        _set_paused(True)
     if message:
         xbmcgui.Dialog().notification(owner, message, xbmcgui.NOTIFICATION_INFO,
                                       int(seconds * 1000), False)
@@ -79,7 +90,7 @@ def _resume():
     player = xbmc.Player()
     # only undo our own pause: if the viewer already pressed play, leave it playing
     if player.isPlayingVideo() and _paused():
-        player.pause()
+        _set_paused(False)
 
 
 def stopped():
