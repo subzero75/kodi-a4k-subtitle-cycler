@@ -1,4 +1,4 @@
-import json, os, re, time
+import json, os, re, sys, time
 from urllib.parse import quote, unquote_plus
 import xbmc, xbmcgui
 from resources.lib import common as c
@@ -128,7 +128,9 @@ def download(item):
 def main():
     p = xbmc.Player()
     if not p.isPlayingVideo():
-        c.addon().openSettings()
+        if 'auto' in sys.argv[1:]:
+            return  # started by the service, but the video was stopped meanwhile
+        c.addon().openSettings()  # started from the add-on list: show the settings
         return
     home = xbmcgui.Window(10000)
     try:

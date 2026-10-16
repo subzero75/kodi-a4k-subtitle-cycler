@@ -1,4 +1,5 @@
-"""Read the timing of an embedded text subtitle track from a Matroska (MKV) file.
+"""Read the timing (or the whole text) of an embedded text subtitle track from a Matroska
+(MKV) file.
 
 Only the parts of the file that are needed are read, so this also works for streamed
 files (debrid, Usenet): the headers, the cue index and a sample of subtitle blocks.
@@ -9,6 +10,7 @@ SEGMENT, SEEKHEAD, SEEK, SEEKID, SEEKPOS = 0x18538067, 0x114D9B74, 0x4DBB, 0x53A
 INFO, TIMESCALE, DURATION = 0x1549A966, 0x2AD7B1, 0x4489
 TRACKS, TRACKENTRY, TRACKNUMBER, TRACKTYPE, CODECID = 0x1654AE6B, 0xAE, 0xD7, 0x83, 0x86
 LANGUAGE, LANGUAGE_BCP47, FLAGFORCED, FLAGDEFAULT, TRACKNAME = 0x22B59C, 0x22B59D, 0x55AA, 0x88, 0x536E
+CODECPRIVATE = 0x63A2
 CUES, CUEPOINT, CUETIME, CUETRACKPOS = 0x1C53BB6B, 0xBB, 0xB3, 0xB7
 CUETRACK, CUECLUSTERPOS, CUERELPOS = 0xF7, 0xF1, 0xF0
 CLUSTER, CLUSTERTIME, SIMPLEBLOCK, BLOCKGROUP, BLOCK, BLOCKDURATION = (
@@ -187,6 +189,8 @@ class MKV:
                     t['default'] = _uint(self.src, kpos, ksize)
                 elif k == TRACKNAME:
                     t['name'] = _str(self.src, kpos, ksize)
+                elif k == CODECPRIVATE and ksize < 1024 * 1024:
+                    t['private'] = self.src.read(kpos, ksize)  # the ASS header
             self.tracks.append(t)
 
     def _cues(self, pos, csize):
@@ -310,6 +314,92 @@ class MKV:
             if log:
                 log('read limit reached after %d blocks' % len(out))
         return _dedupe(out)
+
+
+    def full_events(self, track, log=None):
+        """Every subtitle of the track as (start_ms, end_ms or None, payload bytes), read block
+        by block through the cue index; None when the index does not list the track's blocks
+        (reading the whole file would be needed)."""
+        num = track['number']
+        sub_cues = sorted({(c[2], c[3], c[0]) for c in self.cues if c[1] == num and c[3] is not None})
+        if len(sub_cues) < 10:
+            return None
+        self.src.chunk = 16 * 1024  # many small reads spread over the file
+        out = []
+        cluster_info = {}
+        for cpos, rel, _t in sub_cues:
+            if cpos not in cluster_info:
+                cluster_info[cpos] = self._cluster(cpos)
+            data, _end, ts = cluster_info[cpos]
+            eid, size, pos = header(self.src, data + rel)
+            if eid not in (SIMPLEBLOCK, BLOCKGROUP):
+                continue
+            dur = None
+            if eid == BLOCKGROUP:
+                bpos = bsize = None
+                for k, ksize, kpos in children(self.src, pos, pos + size):
+                    if k == BLOCK:
+                        bpos, bsize = kpos, ksize
+                    elif k == BLOCKDURATION:
+                        dur = _uint(self.src, kpos, ksize)
+                if bpos is None:
+                    continue
+                pos, size = bpos, bsize
+            tr, n = _vint(self.src, pos, False)
+            if tr != num:
+                continue
+            head = self.src.read(pos + n, 3)
+            rel_t = int.from_bytes(head[:2], 'big', signed=True)
+            start = (ts + rel_t) * self.timescale / 1e6
+            end = start + dur * self.timescale / 1e6 if dur else None
+            payload = self.src.read(pos + n + 3, size - n - 3)
+            out.append((start, end, payload))
+        if log:
+            log('read %d embedded subtitles (%d KB)' % (len(out), self.src.read_total // 1024))
+        return sorted(out, key=lambda e: e[0])
+
+
+def _ms_text(ms, ass):
+    ms = max(0, int(round(ms)))
+    h, ms = divmod(ms, 3600000)
+    m, ms = divmod(ms, 60000)
+    sec, ms = divmod(ms, 1000)
+    if ass:
+        return '%d:%02d:%02d.%02d' % (h, m, sec, ms // 10)
+    return '%02d:%02d:%02d,%03d' % (h, m, sec, ms)
+
+
+def to_subtitle_file(track, events):
+    """(bytes, '.ass' or '.srt') of a subtitle file made of the track's events."""
+    timed = []
+    for i, (start, end, payload) in enumerate(events):
+        if end is None:
+            nxt = events[i + 1][0] if i + 1 < len(events) else start + 4000
+            end = min(start + 6000, max(start + 500, nxt))
+        timed.append((start, end, payload.decode('utf-8', 'replace')))
+    codec = track.get('codec')
+    if codec in ('S_TEXT/ASS', 'S_TEXT/SSA') and track.get('private'):
+        head = track['private'].decode('utf-8', 'replace').rstrip()
+        if '[Events]' not in head:
+            head += ('\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, '
+                     'MarginV, Effect, Text')
+        lines = [head]
+        rows = []
+        for start, end, text in timed:
+            # Matroska keeps "ReadOrder, Layer, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
+            parts = text.split(',', 8)
+            if len(parts) < 9:
+                continue
+            order, layer, rest = parts[0], parts[1], parts[2:]
+            rows.append((int(order) if order.strip().isdigit() else 0, 'Dialogue: %s,%s,%s,%s' % (
+                layer, _ms_text(start, True), _ms_text(end, True), ','.join(rest))))
+        lines += [r for _, r in sorted(rows, key=lambda r: r[0])]
+        return ('\n'.join(lines) + '\n').encode('utf-8'), '.ass'
+    blocks = []
+    for i, (start, end, text) in enumerate(timed, 1):
+        blocks.append('%d\n%s --> %s\n%s\n' % (i, _ms_text(start, False), _ms_text(end, False),
+                                                text.strip()))
+    return '\n'.join(blocks).encode('utf-8'), '.srt'
 
 
 def _dedupe(events):

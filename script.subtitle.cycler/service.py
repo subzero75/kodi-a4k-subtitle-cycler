@@ -1,4 +1,4 @@
-import os, time
+import os, threading, time
 import xbmc, xbmcgui, xbmcvfs
 from resources.lib import common as c
 
@@ -14,6 +14,7 @@ class Player(xbmc.Player):
         self.prefetch = 0
         self.anime_auto = 0
         self.tag_at = 0
+        self.embedded_done = set()
 
     @staticmethod
     def _is_otaku():
@@ -187,6 +188,79 @@ def fix_sidecar(player):
                                    ''.join('  (%s)' % t for t in notes)), 4000)
 
 
+def _shown_subtitle():
+    """Kodi's current subtitle stream ({'index', 'language', 'name', ...}) or {}."""
+    players = c.rpc('Player.GetActivePlayers', {})
+    pid = next((p['playerid'] for p in players if p.get('type') == 'video'), 1) \
+        if isinstance(players, list) else 1
+    return c.rpc('Player.GetProperties', {'playerid': pid, 'properties': ['currentsubtitle']}
+                 ).get('currentsubtitle') or {}
+
+
+def fix_embedded(player, video):
+    """Give a text subtitle that comes inside the video (e.g. a fansub release with Arabic
+    subtitles) the same gap fix as downloaded ones: read that track from the MKV, close the
+    gaps and load the fixed copy in its place. Works for any language Kodi is showing."""
+    if not c.gapfix_on() or not xbmc.getCondVisibility('VideoPlayer.SubtitlesEnabled'):
+        return
+    shown = _shown_subtitle()
+    name = shown.get('name') or ''
+    if not shown or 'external' in name.lower() or name.lower().endswith(c.SUB_EXTS):
+        return  # nothing shown, or already a file (ours or a downloaded one)
+    want = xbmc.convertLanguage(shown.get('language') or '', xbmc.ISO_639_2)
+    from resources.lib import mkvsubs
+    f = c._KodiFile(video)
+    try:
+        m = mkvsubs.MKV(mkvsubs.Source(f, max_seconds=120))
+        tracks = [t for t in m.text_tracks()
+                  if xbmc.convertLanguage(t.get('language') or '', xbmc.ISO_639_2) == want]
+        if not tracks:
+            return  # an image subtitle (PGS) or a language we cannot match
+        track = next((t for t in tracks if name and t.get('name') == name), tracks[0])
+        events = m.full_events(track, log=c.log)
+    except (ValueError, mkvsubs.Limit) as e:
+        c.log('embedded subtitle not read: %s' % (e or 'read limit'))
+        return
+    finally:
+        f.close()
+    if not events:
+        c.log('embedded subtitle: the cue index does not list its lines, not read')
+        return
+    data, ext = mkvsubs.to_subtitle_file(track, events)
+    # the track as a plain file (named "<video> embedded.<language>"), then the usual fixes
+    stem = os.path.splitext(os.path.basename(video.split('?')[0]))[0][:80]
+    raw_path = os.path.join(xbmcvfs.translatePath('special://temp/'), '%s embedded.%s%s' % (
+        stem, track.get('language') or 'und', ext))
+    with open(raw_path, 'wb') as fh:
+        fh.write(data)
+    sub, fixed = c.prepare(raw_path)
+    if not (fixed and player.isPlayingVideo() and player.getPlayingFile() == video):
+        return
+    c.log('service: embedded subtitle track %d (%s) -> %s' % (track['number'], track.get('language'), sub))
+    tags = list(c.LAST_TAGS)
+    if c.load(player, sub, raw_path):
+        c.notify('%s  embedded %s subtitle' % (' '.join('+' + t for t in tags),
+                                               shown.get('language') or ''), 3000)
+
+
+def start_embedded_fix(player):
+    """fix_embedded in the background: reading the lines of a streamed MKV takes a while."""
+    try:
+        video = player.getPlayingFile()
+    except RuntimeError:
+        return
+    if not video or video.startswith(('plugin://', 'pvr://')) or video in player.embedded_done:
+        return
+    player.embedded_done.add(video)
+
+    def work():
+        try:
+            fix_embedded(player, video)
+        except Exception as e:
+            c.log('embedded subtitle fix failed: %s' % e, xbmc.LOGWARNING)
+    threading.Thread(target=work, daemon=True).start()
+
+
 def has_wanted_subtitle(player):
     """True when the video has a subtitle track in one of the subtitle download languages."""
     try:
@@ -203,7 +277,9 @@ def auto_load_reason(player):
     if c.seen():
         return None  # a subtitle was already loaded
     if Player._is_otaku():
-        return 'otaku anime' if c.setting_on('otaku_auto') else None
+        if not c.setting_on('otaku_auto') or has_wanted_subtitle(player):
+            return None  # the release brings a subtitle in a wanted language itself
+        return 'otaku anime'
     from resources.lib import otaku
     if xbmc.getInfoLabel('VideoPlayer.IMDBNumber').startswith('tt') and not otaku.tagged_by_us():
         return None  # a4kSubtitles takes care of it (it had the IMDb id from the start)
@@ -232,6 +308,7 @@ def run():
                     fix_sidecar(player)
                 except Exception as e:
                     c.log('subtitle next to the video failed: %s' % e, xbmc.LOGWARNING)
+                start_embedded_fix(player)
                 if c.setting_on('noid_auto') or Player._is_otaku():
                     try:
                         from resources.lib import otaku
@@ -243,7 +320,7 @@ def run():
                 why = auto_load_reason(player)
                 if why:
                     c.log('%s: loading a subtitle automatically' % why)
-                    xbmc.executebuiltin('RunScript(script.subtitle.cycler)')
+                    xbmc.executebuiltin('RunScript(script.subtitle.cycler,auto)')
             check(player)
 
 
