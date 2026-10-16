@@ -141,6 +141,11 @@ def candidates(item):
             # Releases often restart at S01 for every part, while subtitle sites list the
             # 4th part as season 4: try that numbering too
             part = mapped.get('part') if mapped else None
+            if part and part > 1 and season == 1 and episode == item['episode']:
+                # "S01E06" of part 4 is episode 6 of PART 1 on subtitle sites, which number
+                # the show on: continue the earlier parts instead (TYBW S01E46), the same
+                # count Otaku's mapping uses (Bleach S17E46)
+                meta['episode'] = mapped['episode']
             if part and part != season:
                 metas.append(dict(meta, season=part, episode=item['episode']))
         for meta in metas:
