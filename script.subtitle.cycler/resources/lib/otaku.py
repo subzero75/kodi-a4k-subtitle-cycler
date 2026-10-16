@@ -301,6 +301,27 @@ def tagged_by_us():
     return bool(xbmcgui.Window(10000).getProperty(PROP_TAGGED))
 
 
+def _playing_paths(player):
+    """Every path Kodi may know the playing item by, its own path (a .strm) first."""
+    paths = []
+    try:
+        players = c.rpc('Player.GetActivePlayers', {})
+        pid = next((p['playerid'] for p in players if p.get('type') == 'video'), 1) if isinstance(players, list) else 1
+        paths.append(c.rpc('Player.GetItem', {'playerid': pid, 'properties': ['file']}).get('item', {}).get('file'))
+    except Exception:
+        pass
+    paths.append(xbmc.getInfoLabel('Player.FilenameAndPath'))
+    try:
+        paths.append(player.getPlayingFile())
+    except Exception:
+        pass
+    out = []
+    for p in paths:
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
 def tag_playing(player):
     """Give the playing video the IMDb id, show, season and episode we found, so that Kodi's
     own subtitle search window, a4kSubtitles and any other subtitle add-on can search for it
@@ -321,23 +342,39 @@ def tag_playing(player):
     if not meta or not meta.get('imdb_id') or not player.isPlayingVideo():
         return False
     try:
-        li = xbmcgui.ListItem(path=player.getPlayingFile())
-        tag = li.getVideoInfoTag()
-        tag.setIMDBNumber(meta['imdb_id'])
-        tag.setUniqueIDs({'imdb': meta['imdb_id']}, 'imdb')
-        title = xbmc.getInfoLabel('VideoPlayer.Title') or meta.get('title') or ''
-        if title:
-            tag.setTitle(title)
-        if meta['movie']:
-            tag.setMediaType('movie')
-        else:
-            tag.setMediaType('episode')
-            tag.setTvShowTitle(meta.get('tvshow') or meta.get('title') or '')
-            tag.setSeason(int(meta['season']))
-            tag.setEpisode(int(meta['episode']))
-        player.updateInfoTag(li)
+        updated = False
+        # Kodi only updates the playing item when the ListItem path is the item's own path.
+        # For a .strm that is the .strm file, not the stream it points to (getPlayingFile),
+        # so try every path Kodi knows for it and check that the IMDb id really arrived.
+        for path in _playing_paths(player):
+            li = xbmcgui.ListItem(path=path)
+            tag = li.getVideoInfoTag()
+            tag.setIMDBNumber(meta['imdb_id'])
+            tag.setUniqueIDs({'imdb': meta['imdb_id']}, 'imdb')
+            title = xbmc.getInfoLabel('VideoPlayer.Title') or meta.get('title') or ''
+            if title:
+                tag.setTitle(title)
+            if meta['movie']:
+                tag.setMediaType('movie')
+            else:
+                tag.setMediaType('episode')
+                tag.setTvShowTitle(meta.get('tvshow') or meta.get('title') or '')
+                tag.setSeason(int(meta['season']))
+                tag.setEpisode(int(meta['episode']))
+            player.updateInfoTag(li)
+            for _ in range(15):
+                if xbmc.getInfoLabel('VideoPlayer.IMDBNumber') == meta['imdb_id']:
+                    updated = True
+                    break
+                xbmc.sleep(100)
+            if updated:
+                break
+            c.log('playing video kept no IMDb id with path %s' % path)
     except Exception as e:
         c.log('could not update the playing video: %s' % e, xbmc.LOGWARNING)
+        return False
+    if not updated:
+        c.log('could not give the playing video its IMDb id, Kodi ignored every path', xbmc.LOGWARNING)
         return False
     home.setProperty(PROP_TAGGED, meta['imdb_id'])
     c.log('playing video now has %s%s, so every subtitle search can find it' % (
