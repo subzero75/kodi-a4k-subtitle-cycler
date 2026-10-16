@@ -124,16 +124,50 @@ def candidates(item):
     show = xbmc.getInfoLabel('VideoPlayer.TVShowTitle') or xbmc.getInfoLabel('VideoPlayer.Title')
     base = show.split(' - ')[0].strip()
     if base:
-        meta = {'imdb_id': '', 'movie': bool(item.get('movie')), 'title': base}
+        # a4kSubtitles gives up without an IMDb id ("missing imdb id!") unless Kodi also knows
+        # the year, so look the show's own id up here (e.g. "BLEACH: Thousand-Year Blood War"
+        # has its own IMDb entry, separate from the old Bleach series)
+        imdb = imdb_from_title(base, movie=bool(item.get('movie')))
+        meta = {'imdb_id': imdb, 'movie': bool(item.get('movie')), 'title': base}
+        metas = [meta]
         if not meta['movie']:
             m = SXXEYY.search(os.path.basename(xbmc.Player().getPlayingFile()))
             season, episode = (int(m.group(1)), int(m.group(2))) if m else (
                 int(xbmc.getInfoLabel('VideoPlayer.Season') or 1), item['episode'])
             meta.update({'tvshow': base, 'season': season, 'episode': episode})
-        if not any(o['movie'] == meta['movie'] and o.get('season') == meta.get('season')
-                   and o.get('episode') == meta.get('episode') and o.get('title') == base for o in out):
-            out.append(meta)
+            # Releases often restart at S01 for every part, while subtitle sites list the
+            # 4th part as season 4: try that numbering too
+            part = _part_number(item)
+            if part and part != season:
+                metas.append(dict(meta, season=part, episode=item['episode']))
+        for meta in metas:
+            if not any(o['movie'] == meta['movie'] and o.get('season') == meta.get('season')
+                       and o.get('episode') == meta.get('episode') and o.get('title') == base
+                       for o in out):
+                out.append(meta)
     return out
+
+
+def _part_number(item):
+    """Which part of a show an Otaku anime is, from its MAL title: "Bleach: Sennen Kessen-hen"
+    is part 1, "... - Kashin-tan" (the 4th MAL entry of that name) part 4. None if unknown."""
+    db = xbmcvfs.translatePath('special://profile/addon_data/plugin.video.otaku/mappings.db')
+    if not os.path.exists(db):
+        return None
+    con = sqlite3.connect(db)
+    try:
+        row = con.execute('SELECT mal_title FROM anime WHERE mal_id=?', (item['mal_id'],)).fetchone()
+        if not row or ' - ' not in (row[0] or ''):
+            return None
+        base = row[0].split(' - ')[0]
+        ids = sorted(r[0] for r in con.execute(
+            "SELECT mal_id FROM anime WHERE mal_title=? OR mal_title LIKE ?", (base, base + ' - %')))
+        return ids.index(item['mal_id']) + 1 if item['mal_id'] in ids else None
+    except Exception as e:
+        c.log('otaku: part number failed: %s' % e, xbmc.LOGWARNING)
+        return None
+    finally:
+        con.close()
 
 
 def a4k_search(meta, langs):
@@ -178,7 +212,8 @@ def imdb_from_title(title, year=None, movie=False):
     service a4kSubtitles uses, which it only does when Kodi also knows the year).
     With several matches the best known one wins, e.g. "Lost" -> the 2004 series."""
     from urllib.request import Request, urlopen
-    query = re.sub(r'\s+', '_', title.strip().lower())[:20]
+    # IMDb's suggestion files are named by letters and digits only ("bleach_thousand_year")
+    query = re.sub(r'[^a-z0-9]+', '_', title.strip().lower()).strip('_')[:20]
     if not query:
         return ''
     url = 'https://v2.sg.media-imdb.com/suggestion/%s/%s.json' % (quote_plus(query[0]), quote_plus(query))
