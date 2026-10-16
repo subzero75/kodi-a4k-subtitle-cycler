@@ -294,6 +294,50 @@ def wanted_languages():
     return {xbmc.convertLanguage(l, xbmc.ISO_639_2) for l in langs} - {''}
 
 
+def _lang3(code):
+    code = code or ''
+    return xbmc.convertLanguage(code.split('-')[0], xbmc.ISO_639_2) or code
+
+
+def showing_wanted():
+    """True when Kodi shows a full (not forced) subtitle in one of the subtitle languages."""
+    want = {_lang3(l) for l in (c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'})
+                                .get('value') or [])}
+    shown = _shown_subtitle()
+    return bool(xbmc.getCondVisibility('VideoPlayer.SubtitlesEnabled') and shown
+                and _lang3(shown.get('language')) in want and not shown.get('isforced'))
+
+
+def select_wanted_embedded(player):
+    """When the video has a full subtitle track in one of the subtitle languages but another
+    one is shown (the file's default, a forced track, or one another add-on picked), show
+    the wanted one instead. Returns True when it switched."""
+    want = [_lang3(l) for l in (c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'})
+                                .get('value') or [])]
+    if not want:
+        return False
+    players = c.rpc('Player.GetActivePlayers', {})
+    pid = next((p['playerid'] for p in players if p.get('type') == 'video'), 1) \
+        if isinstance(players, list) else 1
+    props = c.rpc('Player.GetProperties', {'playerid': pid, 'properties': [
+        'subtitles', 'currentsubtitle', 'subtitleenabled']})
+    shown = props.get('currentsubtitle') or {}
+    if props.get('subtitleenabled') and _lang3(shown.get('language')) in want \
+            and not shown.get('isforced'):
+        return False  # already showing a full subtitle in a wanted language
+    tracks = [t for t in props.get('subtitles') or []
+              if _lang3(t.get('language')) in want and not t.get('isforced')
+              and 'forced' not in (t.get('name') or '').lower()]
+    if not tracks:
+        return False
+    tracks.sort(key=lambda t: want.index(_lang3(t.get('language'))))
+    player.setSubtitleStream(tracks[0]['index'])
+    player.showSubtitles(True)
+    c.log('showing the video\'s own %s subtitle "%s" instead of "%s"' % (
+        tracks[0].get('language'), tracks[0].get('name'), shown.get('name') or 'none'))
+    return True
+
+
 def has_wanted_subtitle(player):
     """True when the video has a subtitle track in one of the subtitle download languages."""
     try:
@@ -326,7 +370,11 @@ def hold_done(player):
     """True when the subtitle work at the start is over, so a held video can play."""
     if c.seen():
         return True  # a subtitle was loaded (downloaded, fixed or chosen)
-    if player.tag_at or player.prefetch or player.embedded_busy:
+    if player.tag_at or player.prefetch:
+        return False
+    if not player.anime_auto and showing_wanted():
+        return True  # the video's own subtitle in your language is on (its gap fix may follow)
+    if player.embedded_busy:
         return False
     if player.auto_started:
         # the automatic load is running in the button script; done when its lock is gone
@@ -365,6 +413,14 @@ def run():
                         c.log('tagging the video failed: %s' % e, xbmc.LOGWARNING)
             if player.anime_auto and time.time() > player.anime_auto:
                 player.anime_auto = 0
+                try:
+                    if not c.seen() and select_wanted_embedded(player):
+                        # give the track Kodi now shows the gap fix too
+                        player.embedded_done.discard(player.getPlayingFile())
+                        xbmc.sleep(500)
+                        start_embedded_fix(player)
+                except Exception as e:
+                    c.log('choosing the video\'s own subtitle failed: %s' % e, xbmc.LOGWARNING)
                 why = auto_load_reason(player)
                 if why:
                     c.log('%s: loading a subtitle automatically' % why)
