@@ -68,3 +68,27 @@ msgstr ""
 msgctxt "#32015"
 msgid "a4kSubtitles only downloads automatically when Kodi knows the IMDb id, which some players do not pass on. Then, about 15 seconds after the start, the first subtitle that fits the video is loaded, unless the video already has a subtitle in your language."
 msgstr ""
+
+msgctxt "#32016"
+msgid "Start"
+msgstr ""
+
+msgctxt "#32017"
+msgid "Pause the video at its start until a subtitle is ready"
+msgstr ""
+
+msgctxt "#32018"
+msgid "Experimental. The video waits at its first frame while the subtitle is found, fixed and loaded, then plays. If Original Audio has the same option on, the video also waits for the audio track. A video you play or pause yourself is left alone."
+msgstr ""
+
+msgctxt "#32019"
+msgid "Wait at most (seconds)"
+msgstr ""
+
+msgctxt "#32020"
+msgid "Getting subtitles ready..."
+msgstr ""
+
+msgctxt "#32021"
+msgid "The video plays after this many seconds even if no subtitle was found. Anime from Otaku can take 30 seconds or more."
+msgstr ""

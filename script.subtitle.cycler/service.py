@@ -1,6 +1,7 @@
 import os, threading, time
 import xbmc, xbmcgui, xbmcvfs
 from resources.lib import common as c
+from resources.lib import hold
 
 SKIP_EXT = ('.json', '.db', '.xml', '.log', '.zip', '.rar', '.7z', '.gz', '.py', '.pyc', '.png', '.jpg')
 MAX_SIZE = 3 * 1024 * 1024
@@ -15,6 +16,9 @@ class Player(xbmc.Player):
         self.anime_auto = 0
         self.tag_at = 0
         self.embedded_done = set()
+        self.embedded_busy = False
+        self.holding = False
+        self.auto_started = 0
 
     @staticmethod
     def _is_otaku():
@@ -37,6 +41,15 @@ class Player(xbmc.Player):
         # a4kSubtitles cannot auto-download for Otaku anime (no IMDb id): do it with the button logic
         # a4kSubtitles only auto-downloads when Kodi knows the IMDb id; decided after 15 s
         self.anime_auto = time.time() + 15
+        self.auto_started = 0
+        self.holding = False
+        if c.setting_on('hold_start', False):
+            self.anime_auto = time.time() + 4  # no reason to wait while the video is paused
+            # Optional: keep the video paused at its start until a subtitle is ready (or the
+            # wait runs out); Original Audio can hold it at the same time for the audio track
+            self.holding = True
+            hold.start('Subtitle Cycler', max(5, c.addon().getSettingInt('hold_max')),
+                       c.addon().getLocalizedString(32020))
         self.known = {}
         c.reset_seen()
         # New playback: forget the previous result list so the next press searches again
@@ -44,6 +57,13 @@ class Player(xbmc.Player):
             os.remove(c.STATE)
         except OSError:
             pass
+
+
+    def onPlayBackStopped(self):
+        hold.stopped()
+
+    def onPlayBackEnded(self):
+        hold.stopped()
 
 
 def candidates():
@@ -252,12 +272,15 @@ def start_embedded_fix(player):
     if not video or video.startswith(('plugin://', 'pvr://')) or video in player.embedded_done:
         return
     player.embedded_done.add(video)
+    player.embedded_busy = True
 
     def work():
         try:
             fix_embedded(player, video)
         except Exception as e:
             c.log('embedded subtitle fix failed: %s' % e, xbmc.LOGWARNING)
+        finally:
+            player.embedded_busy = False
     threading.Thread(target=work, daemon=True).start()
 
 
@@ -286,6 +309,20 @@ def auto_load_reason(player):
     if not c.setting_on('noid_auto') or has_wanted_subtitle(player):
         return None
     return 'no IMDb id'
+
+
+def hold_done(player):
+    """True when the subtitle work at the start is over, so a held video can play."""
+    if player.tag_at or player.prefetch or player.embedded_busy:
+        return False
+    if c.seen():
+        return True  # a subtitle was loaded (downloaded, fixed or chosen)
+    if player.auto_started:
+        # the automatic load is running in the button script; done when its lock is gone
+        running = xbmcgui.Window(10000).getProperty('subtitlecycler.running')
+        return not running and time.time() - player.auto_started > 3
+    # no automatic load was needed: give a subtitle add-on's own auto-download a moment
+    return not player.anime_auto and time.time() - player.start > 12
 
 
 def run():
@@ -321,7 +358,12 @@ def run():
                 if why:
                     c.log('%s: loading a subtitle automatically' % why)
                     xbmc.executebuiltin('RunScript(script.subtitle.cycler,auto)')
+                    player.auto_started = time.time()
             check(player)
+            if player.holding and hold_done(player):
+                player.holding = False
+                hold.release('Subtitle Cycler')
+        hold.check()
 
 
 run()

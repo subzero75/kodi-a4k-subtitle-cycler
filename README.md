@@ -81,3 +81,7 @@ Written with help from Claude (Anthropic).
 ## License
 
 MIT
+
+## Pause at the start (experimental, off by default)
+
+With *Pause the video at its start until a subtitle is ready* on, the video waits at its first frame while the subtitle is found, fixed and loaded (at most *Wait at most* seconds, 30 by default; anime from Otaku can need that much), then plays. Original Audio has the same option for the audio track; with both on, the video plays when both are done. A video you play or pause yourself is left alone.

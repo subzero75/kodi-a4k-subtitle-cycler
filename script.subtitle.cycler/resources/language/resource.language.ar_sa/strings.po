@@ -68,3 +68,27 @@ msgstr "تحميل ترجمة تلقائياً عندما لا يكون للفي
 msgctxt "#32015"
 msgid "a4kSubtitles only downloads automatically when Kodi knows the IMDb id, which some players do not pass on. Then, about 15 seconds after the start, the first subtitle that fits the video is loaded, unless the video already has a subtitle in your language."
 msgstr "إضافة a4kSubtitles لا تنزّل تلقائياً إلا إذا عرف كودي رقم IMDb، وبعض المشغلات لا تمرره. عندها تُحمَّل بعد نحو 15 ثانية أول ترجمة تناسب الفيديو، إلا إذا كان فيه ترجمة بلغتك."
+
+msgctxt "#32016"
+msgid "Start"
+msgstr "البداية"
+
+msgctxt "#32017"
+msgid "Pause the video at its start until a subtitle is ready"
+msgstr "إيقاف الفيديو في بدايته حتى تجهز الترجمة"
+
+msgctxt "#32018"
+msgid "Experimental. The video waits at its first frame while the subtitle is found, fixed and loaded, then plays. If Original Audio has the same option on, the video also waits for the audio track. A video you play or pause yourself is left alone."
+msgstr "ميزة تجريبية. يتوقف الفيديو عند أول لقطة حتى تُعثر على الترجمة وتُصلح وتُحمَّل، ثم يبدأ. وإذا كان الخيار نفسه مفعّلاً في Original Audio، ينتظر الفيديو أيضاً تبديل مسار الصوت. وإذا شغّلت الفيديو أو أوقفته بنفسك فلا يتدخل."
+
+msgctxt "#32019"
+msgid "Wait at most (seconds)"
+msgstr "أقصى مدة انتظار (بالثواني)"
+
+msgctxt "#32020"
+msgid "Getting subtitles ready..."
+msgstr "جارٍ تجهيز الترجمة..."
+
+msgctxt "#32021"
+msgid "The video plays after this many seconds even if no subtitle was found. Anime from Otaku can take 30 seconds or more."
+msgstr "يبدأ الفيديو بعد هذه المدة حتى لو لم تُعثر على ترجمة. أنمي Otaku قد يحتاج 30 ثانية أو أكثر."

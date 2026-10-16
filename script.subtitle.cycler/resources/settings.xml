@@ -64,6 +64,28 @@
           <control type="toggle"/>
         </setting>
       </group>
+      <group id="3" label="32016">
+        <setting id="hold_start" type="boolean" label="32017" help="32018">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="hold_max" type="integer" label="32019" help="32021">
+          <level>0</level>
+          <default>30</default>
+          <constraints>
+            <minimum>5</minimum>
+            <step>5</step>
+            <maximum>90</maximum>
+          </constraints>
+          <dependencies>
+            <dependency type="enable" setting="hold_start">true</dependency>
+          </dependencies>
+          <control type="slider" format="integer">
+            <popup>false</popup>
+          </control>
+        </setting>
+      </group>
     </category>
   </section>
 </settings>
