@@ -228,6 +228,8 @@ def fix_embedded(player, video):
     if not shown or 'external' in name.lower() or name.lower().endswith(c.SUB_EXTS):
         return  # nothing shown, or already a file (ours or a downloaded one)
     want = xbmc.convertLanguage(shown.get('language') or '', xbmc.ISO_639_2)
+    if want not in wanted_languages():
+        return  # e.g. the file's default English track while you want another language
     from resources.lib import mkvsubs
     f = c._KodiFile(video)
     try:
@@ -253,6 +255,8 @@ def fix_embedded(player, video):
         stem, track.get('language') or 'und', ext))
     with open(raw_path, 'wb') as fh:
         fh.write(data)
+    if c.seen():
+        return  # meanwhile a subtitle was downloaded or chosen: keep that one
     sub, fixed = c.prepare(raw_path)
     if not (fixed and player.isPlayingVideo() and player.getPlayingFile() == video):
         return
@@ -284,12 +288,19 @@ def start_embedded_fix(player):
     threading.Thread(target=work, daemon=True).start()
 
 
+def wanted_languages():
+    """Kodi's subtitle download languages as ISO 639-2 codes ({'ara', 'eng'})."""
+    langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or []
+    return {xbmc.convertLanguage(l, xbmc.ISO_639_2) for l in langs} - {''}
+
+
 def has_wanted_subtitle(player):
     """True when the video has a subtitle track in one of the subtitle download languages."""
     try:
-        langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or []
-        want = {xbmc.convertLanguage(l, xbmc.ISO_639_2) for l in langs} - {''}
-        have = set(player.getAvailableSubtitleStreams())
+        want = wanted_languages()
+        # newer Kodi reports 'ar' / 'ar-SA', older 'ara': compare as ISO 639-2
+        have = {xbmc.convertLanguage(l.split('-')[0], xbmc.ISO_639_2) or l
+                for l in player.getAvailableSubtitleStreams()}
         return bool(want & have)
     except Exception:
         return False
@@ -313,10 +324,10 @@ def auto_load_reason(player):
 
 def hold_done(player):
     """True when the subtitle work at the start is over, so a held video can play."""
-    if player.tag_at or player.prefetch or player.embedded_busy:
-        return False
     if c.seen():
         return True  # a subtitle was loaded (downloaded, fixed or chosen)
+    if player.tag_at or player.prefetch or player.embedded_busy:
+        return False
     if player.auto_started:
         # the automatic load is running in the button script; done when its lock is gone
         running = xbmcgui.Window(10000).getProperty('subtitlecycler.running')
