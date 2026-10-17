@@ -13,11 +13,17 @@ import xbmc
 import xbmcgui
 
 PROP = 'playback.hold'            # {"owner": deadline (unix time)}
-PAUSED = 'playback.hold.paused'   # time of our pause, set while the pause is ours
-REPAUSED = 'playback.hold.repaused'
-SETTLE = 4  # seconds after our pause in which Kodi itself may start the video again
+PAUSED = 'playback.hold.paused'   # time of our last pause, set while the hold is ours
+REPAUSED = 'playback.hold.repaused'  # how often Kodi started the video by itself
+SETTLE = 4  # seconds after our pause in which a start is Kodi's own, not the viewer's
+MAX_REPAUSE = 5
+FILE = 'playback.hold.file'       # the video the hold is for
 MESSAGE = 'playback.hold.message' # [heading, text, last shown] of the notice while held
 SHOW_MS = 3000  # the notice is shown in short pieces, so it is gone soon after the hold ends
+
+
+def _log(msg):
+    xbmc.log('[playback hold] %s' % msg, xbmc.LOGINFO)
 
 
 def _home():
@@ -43,6 +49,10 @@ def _paused():
     return xbmc.getCondVisibility('Player.Paused')
 
 
+def _caching():
+    return xbmc.getCondVisibility('Player.Caching')
+
+
 def _set_paused(paused):
     """Pause or play explicitly. xbmc.Player().pause() toggles, so two add-ons pausing at the
     same moment would pause and play again; Player.PlayPause with play=false/true does not."""
@@ -58,14 +68,31 @@ def start(owner, seconds, message=None):
     """Hold the playing video for up to `seconds` until release(owner)."""
     player = xbmc.Player()
     if not player.isPlayingVideo():
+        _log('%s: no video playing, not held' % owner)
         return
+    try:
+        video = player.getPlayingFile()
+    except RuntimeError:
+        video = ''
+    if _home().getProperty(FILE) != video:
+        # a new video (the next episode can start without a stop in between): start afresh
+        stopped()
+        _home().setProperty(FILE, video)
     holders = {k: v for k, v in _holders().items() if v > time.time()}
     holders[owner] = time.time() + seconds
     _save(holders)
-    if not _home().getProperty(PAUSED) and not _paused():
+    if not _home().getProperty(PAUSED):
+        # also when Kodi still shows the video as paused (filling its start-up buffer):
+        # check() then pauses it as soon as Kodi starts it
         _home().setProperty(PAUSED, str(time.time()))
-        _home().clearProperty(REPAUSED)
-        _set_paused(True)
+        _home().setProperty(REPAUSED, '0')
+        if _paused():
+            _log('%s: holding (Kodi is still loading the video)' % owner)
+        else:
+            _set_paused(True)
+            _log('%s: paused for up to %d s' % (owner, seconds))
+    else:
+        _log('%s: joined the hold' % owner)
     if message:
         _home().setProperty(MESSAGE, json.dumps([owner, message, 0]))
         _notice()
@@ -88,41 +115,63 @@ def release(owner):
     holders = {k: v for k, v in _holders().items() if v > time.time() and k != owner}
     _save(holders)
     if not holders:
-        _resume()
+        _resume('%s is ready' % owner)
 
 
 def check():
-    """Call every second or so: plays the video again when every deadline has passed, and
-    keeps the notice up while it is held."""
+    """Call every second or so: plays the video again when every deadline has passed, pauses
+    it again when Kodi starts it by itself, and keeps the notice up while it is held."""
     if not _home().getProperty(PAUSED):
         return
     if not any(v > time.time() for v in _holders().values()):
         _save({})
-        _resume()
+        _resume('waited long enough')
         return
-    # Kodi starts the video by itself once its start-up buffer is full, which can undo a pause
-    # made a moment earlier; pause once more then. Later, a playing video means the viewer
-    # pressed play, and that is left alone.
     try:
         since = time.time() - float(_home().getProperty(PAUSED))
     except ValueError:
         since = SETTLE
-    if since < SETTLE and not _paused() and not _home().getProperty(REPAUSED) \
-            and xbmc.Player().isPlayingVideo():
-        _home().setProperty(REPAUSED, '1')
+    if _paused() or _caching():
+        if _caching():
+            # Kodi is still filling its buffer and will start the video when it is full
+            _home().setProperty(PAUSED, str(time.time()))
+        _notice()
+        return
+    if not xbmc.Player().isPlayingVideo():
+        return
+    try:
+        count = int(_home().getProperty(REPAUSED) or 0)
+    except ValueError:
+        count = 0
+    if since < SETTLE and count < MAX_REPAUSE:
+        # Kodi starts the video by itself once its start-up buffer is full, and again after
+        # it switches a subtitle or audio track: pause once more
+        _home().setProperty(REPAUSED, str(count + 1))
+        _home().setProperty(PAUSED, str(time.time()))
         _set_paused(True)
-    _notice()
+        _log('Kodi started the video by itself, paused again')
+        _notice()
+        return
+    # playing a while after our pause: the viewer pressed play. The hold is over, and a
+    # pause the viewer makes later is theirs, not ours to undo
+    _log('the viewer started the video, hold ended')
+    _save({})
+    _home().clearProperty(PAUSED)
+    _home().clearProperty(REPAUSED)
+    _home().clearProperty(MESSAGE)
 
 
-def _resume():
+def _resume(why):
     _home().clearProperty(MESSAGE)
     if not _home().getProperty(PAUSED):
         return
     _home().clearProperty(PAUSED)
+    _home().clearProperty(REPAUSED)
     player = xbmc.Player()
     # only undo our own pause: if the viewer already pressed play, leave it playing
     if player.isPlayingVideo() and _paused():
         _set_paused(False)
+        _log('playing again (%s)' % why)
 
 
 def stopped():
@@ -131,3 +180,4 @@ def stopped():
     _home().clearProperty(PAUSED)
     _home().clearProperty(REPAUSED)
     _home().clearProperty(MESSAGE)
+    _home().clearProperty(FILE)
