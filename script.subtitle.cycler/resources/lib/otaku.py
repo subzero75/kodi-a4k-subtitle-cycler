@@ -5,7 +5,7 @@ a4kSubtitles refuses to search ("missing imdb id"). Otaku's own mapping database
 the IMDb id and the TVDB season of most anime; with those we ask a4kSubtitles to search
 through its API, using the season/episode numbering that subtitle sites use.
 """
-import json, os, re, sqlite3, sys
+import json, os, re, sqlite3, sys, time
 from urllib.parse import quote_plus
 import xbmc, xbmcgui, xbmcvfs
 from resources.lib import common as c
@@ -359,12 +359,63 @@ def _playing_paths(player):
     return out
 
 
-def _most_results(metas):
+LOOKUPS = os.path.join(os.path.dirname(c.OUT_DIR.rstrip('/\\')), 'lookups.json')
+LOOKUP_DAYS = 14
+
+
+def _load_lookups():
+    try:
+        with open(LOOKUPS) as fh:
+            got = json.load(fh)
+            return got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _remembered(key, metas):
+    """The lookup that won for an earlier episode of the same show, if it still applies."""
+    hit = _load_lookups().get(key) if key else None
+    if not hit or time.time() - hit.get('t', 0) > LOOKUP_DAYS * 86400:
+        return None
+    i = hit.get('index')
+    if isinstance(i, int) and 0 <= i < len(metas) and metas[i].get('imdb_id') == hit.get('imdb'):
+        return metas[i]
+    return None
+
+
+def _remember(key, metas, best, found):
+    if not key:
+        return
+    lookups = _load_lookups()
+    if found > 0:
+        lookups[key] = {'index': metas.index(best), 'imdb': best.get('imdb_id'), 't': time.time()}
+    else:
+        lookups.pop(key, None)  # nothing found anywhere: compare again next time
+    # keep the file small: the most recent 500 shows
+    if len(lookups) > 500:
+        for k, _ in sorted(lookups.items(), key=lambda kv: kv[1].get('t', 0))[:len(lookups) - 500]:
+            lookups.pop(k, None)
+    try:
+        os.makedirs(os.path.dirname(LOOKUPS), exist_ok=True)
+        with open(LOOKUPS, 'w') as fh:
+            json.dump(lookups, fh)
+    except OSError as e:
+        c.log('lookup not remembered: %s' % e, xbmc.LOGWARNING)
+
+
+def _most_results(metas, key=None):
     """The lookup that finds the most subtitles. Kodi's subtitle window can only search with
     the one we write into the video, so pick it the way the button would (e.g. Bleach part 4
-    finds 2 old episodes as Bleach S17E46, but many as Thousand-Year Blood War S04E06)."""
+    finds 2 old episodes as Bleach S17E46, but many as Thousand-Year Blood War S04E06).
+    Comparing means one search per lookup, so the winner is remembered per show (key) and
+    later episodes use it straight away."""
     if len(metas) < 2:
         return metas[0] if metas else None
+    known = _remembered(key, metas)
+    if known:
+        c.log('otaku: using the lookup that worked for earlier episodes: %s%s' % (
+            known['imdb_id'], '' if known['movie'] else ' S%02dE%02d' % (known['season'], known['episode'])))
+        return known
     langs = c.rpc('Settings.GetSettingValue', {'setting': 'subtitles.languages'}).get('value') or ['English']
     best, most = metas[0], -1
     for m in metas:
@@ -377,6 +428,7 @@ def _most_results(metas):
             m['imdb_id'], '' if m['movie'] else ' S%02dE%02d' % (m['season'], m['episode']), n))
         if n > most:
             best, most = m, n
+    _remember(key, metas, best, most)
     return best
 
 
@@ -394,7 +446,8 @@ def tag_playing(player):
     item = current()
     if item:
         found = candidates(item)
-        meta = _most_results([m for m in found if m.get('imdb_id')])
+        meta = _most_results([m for m in found if m.get('imdb_id')],
+                             key='mal:%s' % item.get('mal_id') if item.get('mal_id') else None)
         if not meta and found and not found[0]['movie']:
             meta = dict(found[0], imdb_id=imdb_from_title(found[0].get('tvshow') or found[0]['title']))
     else:

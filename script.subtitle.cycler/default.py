@@ -47,6 +47,13 @@ def otaku_metas():
     if not item:
         return []
     metas = otaku.candidates(item)
+    if 'auto' in sys.argv[1:]:
+        # the automatic load at the start: when a lookup already worked for earlier
+        # episodes of this show, search only with it (one search instead of three)
+        known = otaku._remembered('mal:%s' % item.get('mal_id'),
+                                  [m for m in metas if m.get('imdb_id')])
+        if known:
+            metas = [known]
     for m in metas:
         c.log('otaku: mal %s episode %s -> %s%s' % (
             item['mal_id'], item['episode'], m['imdb_id'] or '"%s"' % m.get('title'),
