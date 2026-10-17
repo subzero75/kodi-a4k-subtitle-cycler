@@ -241,7 +241,7 @@ def fix_embedded(player, video):
         track = next((t for t in tracks if name and t.get('name') == name), tracks[0])
         events = m.full_events(track, log=c.log)
     except (ValueError, mkvsubs.Limit) as e:
-        c.log('embedded subtitle not read: %s' % (e or 'read limit'))
+        c.log('embedded subtitle not read: %s' % (str(e) or type(e).__name__))
         return
     finally:
         f.close()
