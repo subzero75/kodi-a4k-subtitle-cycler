@@ -26,8 +26,9 @@ class Limit(Exception):
 class Source:
     """Random access reader with a small chunk cache and a byte/time budget."""
 
-    def __init__(self, f, max_bytes=150 * 1024 * 1024, max_seconds=25):
+    def __init__(self, f, max_bytes=150 * 1024 * 1024, max_seconds=25, stop=None):
         self.f = f  # object with seek(pos) and read(n) -> bytes
+        self.stop = stop  # optional callable: True when the reading is no longer wanted
         self.chunks = {}
         self.read_total = 0
         self.max_bytes = max_bytes
@@ -42,6 +43,8 @@ class Source:
             if data is None:
                 if self.read_total > self.max_bytes or time.time() > self.deadline:
                     raise Limit()
+                if self.stop and self.stop():
+                    raise Limit('playback moved on')
                 self.f.seek(base)
                 data = self.f.read(self.chunk)
                 self.read_total += len(data)

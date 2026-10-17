@@ -233,7 +233,14 @@ def fix_embedded(player, video):
     from resources.lib import mkvsubs
     f = c._KodiFile(video)
     try:
-        m = mkvsubs.MKV(mkvsubs.Source(f, max_seconds=120))
+        def moved_on():
+            # stop reading when the video stops or another one starts, so a slow stream is not
+            # read on in the background while the next episode loads
+            try:
+                return not player.isPlayingVideo() or player.getPlayingFile() != video
+            except RuntimeError:
+                return True
+        m = mkvsubs.MKV(mkvsubs.Source(f, max_seconds=120, stop=moved_on))
         tracks = [t for t in m.text_tracks()
                   if xbmc.convertLanguage(t.get('language') or '', xbmc.ISO_639_2) == want]
         if not tracks:
@@ -275,8 +282,10 @@ def start_embedded_fix(player):
         return
     if not video or video.startswith(('plugin://', 'pvr://')) or video in player.embedded_done:
         return
+    if player.embedded_busy == video:
+        return  # already reading this video's subtitle track
     player.embedded_done.add(video)
-    player.embedded_busy = True
+    player.embedded_busy = video
 
     def work():
         try:
@@ -284,7 +293,8 @@ def start_embedded_fix(player):
         except Exception as e:
             c.log('embedded subtitle fix failed: %s' % e, xbmc.LOGWARNING)
         finally:
-            player.embedded_busy = False
+            if player.embedded_busy == video:
+                player.embedded_busy = False
     threading.Thread(target=work, daemon=True).start()
 
 
